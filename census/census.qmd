@@ -31,7 +31,7 @@ The resurgence of people moving to downtown Cleveland is making news.[^1] Accord
 I was able to reproduce some estimates. My main tools to do this was the **tidycensus** R package, and the Cleveland Open Data service. I've stepped through the process below.
 
 ::: {.callout-note}
-This web page is a working file. It's mostly a toy project to learn cool R package, learn how to retrieve data from the US Census Bureau API, and leave a record I can refer to later. If you are reading this and are not me, I hope this helps with whatever you're doing. Otherwise, 'hello, future me!' You can find the source code and downloaded data on my [GitHub page](https://github.com/mpfoley73/playground/census).
+This web page is a working file. It's mostly a toy project to learn cool R package, learn how to retrieve data from the US Census Bureau API, and leave a record I can refer to later. If you are reading this and are not me, I hope this helps with whatever you're doing. Otherwise, 'hello, future me!' You can find the source code and downloaded data on my [GitHub page](https://github.com/mpfoley73/playground/tree/master/census).
 :::
 
 [^1]: ["Opinion: Downtown Cleveland's strategy to broaden appeal sees success"](https://www.crainscleveland.com/crains-forum-population-growth/downtown-cleveland-strategy-revitalize-finds-some-success), Crains Cleveland Business. ["Cleveland’s downtown population continues to surge"](https://www.cleveland19.com/2024/11/15/clevelands-downtown-population-continues-surge/), Cleveland Fox 19 News.
@@ -48,27 +48,25 @@ Cleveland extends from Cleveland Hopkins Airport on the west all the way to Eucl
 
 [![](inputs/wikipedia_cleveland.png)](https://en.wikipedia.org/wiki/Cleveland)
 
-The 2020 US decennial census counted 372K people in Cleveland.[^visual-cleve] That's a *decline* from 397K in 2010. The 1-year American Community Survey (ACS) shows it is still falling, down to 363K in 2023.[^acs-2023] But the decline is uneven, and parts of the city are actually growing, including the downtown area. There is no official definition of downtown, so we can make some choices. The Census Bureau provides the building blocks for a definition: over 15K census blocks, rolled up to around 200 census tracts.
+The 2020 US decennial census counted 372K people in Cleveland.[^visual-cleve] That's a *decline* from 397K in 2010. The 1-year American Community Survey (ACS) shows it is still falling, down to 363K in 2023.[^acs-2023] But the decline is uneven, and parts of the city are actually growing, including the downtown area. There is no official definition of downtown, so we can make some choices. The Census Bureau provides the building blocks for a definition: over 15K census blocks in Cleveland, rolled up to around 200 census tracts.
 
 [^visual-cleve]: Cleveland's population plateaued around 1930 at 900K. The peak was 914K in the 1950 census. Between 1960 and 1980 the population declined by a third. The current population is slightly below the 1900 value. See Visual Cleveland at https://visual.clevelandhistory.org/census/.
 
 [^acs-2023]: 362,670 +/- 62. https://data.census.gov/table/ACSST1Y2023.S0101?q=cleveland,%20oh
 
-The Cleveland City Planning Commission defines 34 neighborhoods in Cleveland for urban planning initiatives.[^5] Cleveland Open Data has an [interactive map](https://data.clevelandohio.gov/datasets/b2a2da54401a41e78dd71563f01f5273_0/explore?location=41.494849%2C-81.705800%2C11.82) that you can explore and download. There is a [pdf map](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf) at the CPC that I copy/pasted below. You can see from the map that there is a neighborhood actually called "Downtown". It's the area bounded by the Cuyahoga and I-90.
+The Cleveland City Planning Commission (CPC) defines 34 neighborhoods in Cleveland for urban planning initiatives.[^5] They are also called Statistical (or Social) Planning Areas (SPAs). There is a [pdf map](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf) at the CPC that I copy/pasted below. You can see from the map that there is a neighborhood actually called "Downtown". It's the area bounded by the Cuyahoga and I-90. Cleveland Open Data has an [interactive map](https://data.clevelandohio.gov/datasets/b2a2da54401a41e78dd71563f01f5273_0/explore?location=41.494849%2C-81.705800%2C11.82) that you can explore and download. I followed the link above and downloaded and extracted the shapefile.
 
 [^5]: Social Planning Areas (SPAs) were developed in the 1950s to coordinate social services at the neighborhood level. Learn more at the [Encyclopedia of Cleveland History](https://case.edu/ech/articles/s/social-planning-areas). [Wikipedia](https://en.wikipedia.org/wiki/Neighborhoods_in_Cleveland) has a nice explanation of how neighborhoods relate to Statistical (or social) Planning Areas.
 
 [![](inputs/cleveland_spa.png)](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf)
 
-So that is one definition. A second comes from a study commission by [Downtown Cleveland, Inc.](https://www.downtowncleveland.com/). Urban Partners published a study of the Downtown Cleveland market in 2023. Page 3 of the [pdf report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf) shows a Westside and a Downtown Core. Whereas the Downtown neighborhood had about 13.3K people in the 2020 census, this definition has 18.7K in the Downtown Core. Notice how the Downtown Core takes a bite out of the Central neighborhood on the east side, and parts of the West Bank of the Flats in the Cuyahoga Valley neighborhood and Ohio City neighborhood.
+So that is one definition. A second one comes from a study by Urban Partners that was commission by [Downtown Cleveland, Inc.](https://www.downtowncleveland.com/) in 2023. Page 3 of the [pdf report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf) (copy/pasted below) shows a Westside and a Downtown Core. Whereas the Downtown neighborhood had about 13.3K people in the 2020 census, this definition has 18.7K in the Downtown Core. The main differences are that Urban Partners took a bite out of the Central neighborhood on the east side, and parts of the West Bank of the Flats in the Cuyahoga Valley and Ohio City neighborhoods.
 
 [![](inputs/urban_planners_downtown.png)](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf)
 
-I think I'll stick with the CPC definitions, but keep the Ohio City, Central, and other neighborhoods in mind.
-
 # Blocks, Tracts, and Subdivisions
 
-Several libraries make it easy to work with census data. The **tidycencus** package was developed to interface with the US Census Bureau APIs. It also returns feature geometry for spatial analysis. The **tigris** package works with the Census Bureau's TIGER/Line shapefiles, and the **sf** (simple features) package to perform spatial operations.
+Several libraries make it easy to work with census data. The **tidycencus** package was developed to interface with the US Census Bureau APIs. It also returns feature geometries for spatial analysis. The **tigris** package works with the Census Bureau's TIGER/Line shapefiles, and the **sf** (simple features) package performs spatial operations.
 
 ```{r}
 #| label: setup
@@ -86,7 +84,9 @@ library(tigris) # TIGER/Line shapefiles
 library(sf)  # simple features for spatial analysis
 ```
 
-My first step is to get a precise definition of Cleveland's neighborhoods. The [City of Cleveland Open Data](https://data.clevelandohio.gov/) web site has an interactive [analysis of the 2020 US Census](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).[^open-data] The map has five layers. The blocks file includes the census block and tract, plus the CPC's neighborhood identifier. 
+The first step is to get the CPC's definition of neighborhoods. I used the [City of Cleveland Open Data](https://data.clevelandohio.gov/) web site's interactive [analysis of the 2020 US Census](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).[^open-data] The map has five layers (screen capture below). The first is the shape file of the 34 neighborhoods. The second contains population data from the 2020 decennial census complete with census block, census tract, and SPA name. I downloaded and unzipped the first two files.
+
+[![Screen capture from Open Data](inputs/open_data_files.png)](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926/about)
 
 [^open-data]: From https://data.clevelandohio.gov/, go to the [Data Catalog](https://data.clevelandohio.gov/search?collection=Dataset) and scroll to [Census 2020 Analysis](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).
 
@@ -95,25 +95,27 @@ My first step is to get a precise definition of Cleveland's neighborhoods. The [
 #| results: hide
 #| code-fold: false
 
+# Nice contiguous shape file. One record for each of the 34 SPAs.
+cleve_neigh_0 <-
+  st_read(file.path(
+  "inputs/Cleveland Neighborhoods",
+  "Neighborhood_Population_Change.shp"
+))
+
 # Cleveland populated blocks. Includes block, tract, and SPA name.
 cleve_blocks <- st_read(file.path(
   "inputs/Cleveland Populated Blocks 2020",
   "Decennial_2020_Populated_Blocks_Cleveland_Only.shp"
 )) |>
   select(-starts_with("P0"), -starts_with("H0"))
-
-# Nice contiguous shape file. No census bock/tract/etc. here though.
-cleve_neigh_0 <-
-  st_read(file.path(
-  "inputs/Cleveland Neighborhoods",
-  "Neighborhood_Population_Change.shp"
-))
 ```
 
-I can use this along with other shape data from the **tigris** package to define and map Cleveland and its neighborhoods.
+You can join `cleve_neigh_0` to US Census Bureau data files with the **tigris** package to roll up block-level data into SPAs. In fact, that's what I'll do for the 2000 and 2010 censuses, but it's not perfectly accurate, so that's why I grabbed that second file.
+
+Next, I loaded some shapefiles from the **tigris** package to facilitate mapping. 
 
 ```{r}
-#| code-fold: true
+#| code-fold: false
 #| message: false
 #| warning: false
 #| results: hide
@@ -124,14 +126,13 @@ oh_counties <- tigris::counties(cb = TRUE) |> filter(STUSPS == "OH")
 cuya_county <- oh_counties |> filter(NAME == "Cuyahoga")
 
 oh_places <- tigris::places("OH", year = 2022)
-my_places <-
-  oh_places |> 
-  filter(NAME %in% c(
-    "Euclid", "Parma", "North Olmsted", "Shaker Heights", "Solon", "Lakewood")) |>
-  st_centroid()
+x <- c("Euclid", "Parma", "North Olmsted", "Shaker Heights", "Solon", "Lakewood")
+my_places <- oh_places |> filter(NAME %in% x) |> st_centroid()
 
 terminal_tower <- st_sfc(st_point(c(-81.69387, 41.49824)), crs = 4326)
 ```
+
+Here is a plot of Cuyahoga County, Cleveland, and the 34 Cleveland neighborhoods. Hover over the shapes to see their names. There's Terminal Tower in the heart of downtown. I marked some neighboring cities to get a sense of the geography.
 
 ```{r}
 #| code-fold: true
