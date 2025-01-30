@@ -26,47 +26,47 @@ execute:
   warning: false
 ---
 
-The resurgence of people moving to downtown Cleveland is making news.[^1] According to a study commissioned by Downtown Cleveland Inc., the downtown population was almost 19,000 in the 2020 census, a 22% increase from 2010.[^2] However, Cleveland Open Data shows only 13,000[^cod-downtown]. Cleveland Scene reports that there are lots of estimates out there, one as low as 8,000![^3] What gives? The organizations may be using different sources, like the decennial US census vs the more recent, but less comprehensive, American Community Survey. But it seems more likely they are using different geographic boundaries. 
-
-I was able to reproduce some estimates. My main tools to do this was the **tidycensus** R package, and the Cleveland Open Data service. I've stepped through the process below.
-
-::: {.callout-note}
-This web page is a working file. It's mostly a toy project to learn cool R package, learn how to retrieve data from the US Census Bureau API, and leave a record I can refer to later. If you are reading this and are not me, I hope this helps with whatever you're doing. Otherwise, 'hello, future me!' You can find the source code and downloaded data on my [GitHub page](https://github.com/mpfoley73/playground/tree/master/census).
-:::
+The resurgence of people moving to downtown Cleveland is making news.[^1] According to a study commissioned by Downtown Cleveland Inc., the downtown population was almost 19,000 in the 2020 census, a 22% increase from 2010.[^2] However, Cleveland Open Data shows only 13,000[^3]. Cleveland Scene reports that there are lots of estimates out there, one as low as 8,000![^4] What gives? The organizations may be using different sources, like the decennial US census vs the more recent, but less comprehensive, American Community Survey. But it seems more likely they are using different geographic boundaries.
 
 [^1]: ["Opinion: Downtown Cleveland's strategy to broaden appeal sees success"](https://www.crainscleveland.com/crains-forum-population-growth/downtown-cleveland-strategy-revitalize-finds-some-success), Crains Cleveland Business. ["Cleveland’s downtown population continues to surge"](https://www.cleveland19.com/2024/11/15/clevelands-downtown-population-continues-surge/), Cleveland Fox 19 News.
 
 [^2]: [Downtown Cleveland Inc.](https://www.downtowncleveland.com/research) commissioned a report, ["Downtown Cleveland Market Study Report"](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf) (pdf), by the Urban Partners consulting firm. The report was released in Apr 2023. Figures are from Table 1: 15,330 people in 2010, 18,708 people in 2020 (`r scales::percent(18708/15330-1, 1)` increase).
 
-[^cod-downtown]: See the Downtown neighborhood (statistical processing area, SPA) in the [data table](https://data.clevelandohio.gov/datasets/ClevelandGIS::census-2020-analysis/explore?layer=0&location=41.454326%2C-81.671523%2C10.98&showTable=true).
+[^3]: See the Downtown neighborhood (statistical processing area, SPA) in the [data table](https://data.clevelandohio.gov/datasets/ClevelandGIS::census-2020-analysis/explore?layer=0&location=41.454326%2C-81.671523%2C10.98&showTable=true).
 
-[^3]: ["There's Still No Agreement on How Many Clevelanders Actually Live Downtown"](https://www.clevescene.com/news/theres-still-no-agreement-on-how-many-clevelanders-actually-live-downtown-45115341), Cleveland Scene, Sep 17, 2024.
+[^4]: ["There's Still No Agreement on How Many Clevelanders Actually Live Downtown"](https://www.clevescene.com/news/theres-still-no-agreement-on-how-many-clevelanders-actually-live-downtown-45115341), Cleveland Scene, Sep 17, 2024.
+
+I was able to reproduce some estimates. My main tools to do this were the **tidycensus** R package for US Census data, and the Cleveland Open Data service for Cleveland neighborhood definitions. I'll step through the process below.
+
+::: callout-note
+This is a work file / tutorial. Researching Cleveland's population is mostly a toy project to experiment with R tools that work with APIs. This should come in handy for some future project. If you are not me, I hope this helps with whatever you're doing. Otherwise, 'hello, future me!' You can find the source code and downloaded data on my [GitHub page](https://github.com/mpfoley73/playground/tree/master/census).
+:::
 
 # Defining "Downtown"
 
 Cleveland extends from Cleveland Hopkins Airport on the west all the way to Euclid on the east. It's mostly bounded on the south by I-80. Here is the map from the [Cleveland Wikipedia Page](https://en.wikipedia.org/wiki/Cleveland).
 
-[![](inputs/wikipedia_cleveland.png)](https://en.wikipedia.org/wiki/Cleveland)
+[![Screen capture from Cleveland article on Wikipedia.](inputs/wikipedia_cleveland.png)](https://en.wikipedia.org/wiki/Cleveland)
 
-The 2020 US decennial census counted 372K people in Cleveland.[^visual-cleve] That's a *decline* from 397K in 2010. The 1-year American Community Survey (ACS) shows it is still falling, down to 363K in 2023.[^acs-2023] But the decline is uneven, and parts of the city are actually growing, including the downtown area. There is no official definition of downtown, so we can make some choices. The Census Bureau provides the building blocks for a definition: over 15K census blocks in Cleveland, rolled up to around 200 census tracts.
+The 2020 US decennial census counted 372K people in Cleveland.[^5] That's a *decline* from 397K in 2010. The 1-year American Community Survey (ACS) shows it is still falling, down to 363K in 2023.[^6] But the decline is uneven, and parts of the city are actually growing, including the downtown area. There is no official definition of downtown, so we can make some choices. The Census Bureau provides the building blocks for a definition: over 15K census blocks in Cleveland, rolled up to around 200 census tracts.
 
-[^visual-cleve]: Cleveland's population plateaued around 1930 at 900K. The peak was 914K in the 1950 census. Between 1960 and 1980 the population declined by a third. The current population is slightly below the 1900 value. See Visual Cleveland at https://visual.clevelandhistory.org/census/.
+[^5]: Cleveland's population plateaued around 1930 at 900K. The peak was 914K in the 1950 census. Between 1960 and 1980 the population declined by a third. The current population is slightly below the 1900 value. See Visual Cleveland at https://visual.clevelandhistory.org/census/.
 
-[^acs-2023]: 362,670 +/- 62. https://data.census.gov/table/ACSST1Y2023.S0101?q=cleveland,%20oh
+[^6]: 362,670 +/- 62. https://data.census.gov/table/ACSST1Y2023.S0101?q=cleveland,%20oh
 
-The Cleveland City Planning Commission (CPC) defines 34 neighborhoods in Cleveland for urban planning initiatives.[^5] They are also called Statistical (or Social) Planning Areas (SPAs). There is a [pdf map](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf) at the CPC that I copy/pasted below. You can see from the map that there is a neighborhood actually called "Downtown". It's the area bounded by the Cuyahoga and I-90. Cleveland Open Data has an [interactive map](https://data.clevelandohio.gov/datasets/b2a2da54401a41e78dd71563f01f5273_0/explore?location=41.494849%2C-81.705800%2C11.82) that you can explore and download. I followed the link above and downloaded and extracted the shapefile.
+Cleveland's City Planning Commission (CPC) defines 34 neighborhoods for urban planning initiatives.[^7] They are commonly referred to Statistical (or Social) Planning Areas (SPAs). I pasted a [pdf map](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf) from the CPC below. You can see there is an SPA actually named "Downtown". It's bounded by the Cuyahoga River and I-90. Cleveland Open Data has an [interactive map](https://data.clevelandohio.gov/datasets/b2a2da54401a41e78dd71563f01f5273_0/explore?location=41.494849%2C-81.705800%2C11.82) that you can explore and download. I downloaded and extracted its shapefile to my local drive.
 
-[^5]: Social Planning Areas (SPAs) were developed in the 1950s to coordinate social services at the neighborhood level. Learn more at the [Encyclopedia of Cleveland History](https://case.edu/ech/articles/s/social-planning-areas). [Wikipedia](https://en.wikipedia.org/wiki/Neighborhoods_in_Cleveland) has a nice explanation of how neighborhoods relate to Statistical (or social) Planning Areas.
+[^7]: Social Planning Areas (SPAs) were developed in the 1950s to coordinate social services at the neighborhood level. Learn more at the [Encyclopedia of Cleveland History](https://case.edu/ech/articles/s/social-planning-areas). [Wikipedia](https://en.wikipedia.org/wiki/Neighborhoods_in_Cleveland) has a nice explanation of how neighborhoods relate to Statistical (or social) Planning Areas.
 
-[![](inputs/cleveland_spa.png)](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf)
+[![Screen capture from City Planning Commission 2010 Census pdf.](inputs/cleveland_spa.png)](https://planning.clevelandohio.gov/2010census/downloads/SPAs.pdf)
 
-So that is one definition. A second one comes from a study by Urban Partners that was commission by [Downtown Cleveland, Inc.](https://www.downtowncleveland.com/) in 2023. Page 3 of the [pdf report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf) (copy/pasted below) shows a Westside and a Downtown Core. Whereas the Downtown neighborhood had about 13.3K people in the 2020 census, this definition has 18.7K in the Downtown Core. The main differences are that Urban Partners took a bite out of the Central neighborhood on the east side, and parts of the West Bank of the Flats in the Cuyahoga Valley and Ohio City neighborhoods.
+So that is one definition. A second one comes from a study by Urban Partners that was commission by [Downtown Cleveland, Inc.](https://www.downtowncleveland.com/) in 2023. Page 3 of the [pdf report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf) (copy/pasted below) shows a *Westside* and a *Downtown Core*. Whereas the Downtown SPA had about 13.3K people in the 2020 census, this *Downtown Core* had 18.7K people. The main differences are that Urban Partners took a bite out of the Central neighborhood on the east side, and parts of the West Bank of the Flats in the Cuyahoga Valley and Ohio City neighborhoods on the west side.
 
-[![](inputs/urban_planners_downtown.png)](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf)
+[![Downtown Cleveland Market Study Report, p3. Urban Partners.](inputs/urban_planners_downtown.png)](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf)
 
 # Blocks, Tracts, and Subdivisions
 
-Several libraries make it easy to work with census data. The **tidycencus** package was developed to interface with the US Census Bureau APIs. It also returns feature geometries for spatial analysis. The **tigris** package works with the Census Bureau's TIGER/Line shapefiles, and the **sf** (simple features) package performs spatial operations.
+Let's gather the materials to segment population estimates into these boundaries. Several R libraries make it easy to work with census data. The **tidycencus** package was developed to interface with the US Census Bureau APIs. It also returns feature geometries for spatial analysis. The **tigris** package works with the Census Bureau's TIGER/Line shape files, and the **sf** (simple features) package performs spatial operations.
 
 ```{r}
 #| label: setup
@@ -84,11 +84,11 @@ library(tigris) # TIGER/Line shapefiles
 library(sf)  # simple features for spatial analysis
 ```
 
-The first step is to get the CPC's definition of neighborhoods. I used the [City of Cleveland Open Data](https://data.clevelandohio.gov/) web site's interactive [analysis of the 2020 US Census](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).[^open-data] The map has five layers (screen capture below). The first is the shape file of the 34 neighborhoods. The second contains population data from the 2020 decennial census complete with census block, census tract, and SPA name. I downloaded and unzipped the first two files.
+Let's get the CPC's definition of neighborhoods. I went to the [City of Cleveland Open Data](https://data.clevelandohio.gov/) web site and and navigated to their [analysis of the 2020 US Census](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).[^8] There interactive map has five layers (screen capture below). The first is the shape file of the 34 neighborhoods (SPAs). The second file contains population data from the 2020 decennial census complete with census block, census tract, and SPA. I downloaded and unzipped the first two files. Now I have a way to map the SPA boundaries within Cleveland, and I have a mapping of census blocks to SPAs so I can join this to the US Census data.
+
+[^8]: From https://data.clevelandohio.gov/, go to the [Data Catalog](https://data.clevelandohio.gov/search?collection=Dataset) and scroll to [Census 2020 Analysis](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).
 
 [![Screen capture from Open Data](inputs/open_data_files.png)](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926/about)
-
-[^open-data]: From https://data.clevelandohio.gov/, go to the [Data Catalog](https://data.clevelandohio.gov/search?collection=Dataset) and scroll to [Census 2020 Analysis](https://data.clevelandohio.gov/maps/25f6cdc173774df594b4db4f8aa98926).
 
 ```{r}
 #| label: tigris
@@ -110,9 +110,9 @@ cleve_blocks <- st_read(file.path(
   select(-starts_with("P0"), -starts_with("H0"))
 ```
 
-You can join `cleve_neigh_0` to US Census Bureau data files with the **tigris** package to roll up block-level data into SPAs. In fact, that's what I'll do for the 2000 and 2010 censuses, but it's not perfectly accurate, so that's why I grabbed that second file.
+I could just join `cleve_neigh_0` to US Census Bureau data files by the geography elements using the **sf** package. I know exactly which blocks belong in each SPA for 2020, but block definitions change across censuses, so joining to `cleve_neigh_0` will get me the 2000 and 2010 figures. The shape file may not be perfectly precise because I can't quite match quoted population estimates for 2000 and 2010, but it's close.
 
-Next, I loaded some shapefiles from the **tigris** package to facilitate mapping. 
+Load shape files from the **tigris** package to facilitate mapping. I'll get the state, county boundaries, and a few cities. I also got the Terminal town coordinates from Google.
 
 ```{r}
 #| code-fold: false
@@ -126,13 +126,13 @@ oh_counties <- tigris::counties(cb = TRUE) |> filter(STUSPS == "OH")
 cuya_county <- oh_counties |> filter(NAME == "Cuyahoga")
 
 oh_places <- tigris::places("OH", year = 2022)
-x <- c("Euclid", "Parma", "North Olmsted", "Shaker Heights", "Solon", "Lakewood")
+x <- c("Cleveland Heights", "Mayfield Heights")
 my_places <- oh_places |> filter(NAME %in% x) |> st_centroid()
 
 terminal_tower <- st_sfc(st_point(c(-81.69387, 41.49824)), crs = 4326)
 ```
 
-Here is a plot of Cuyahoga County, Cleveland, and the 34 Cleveland neighborhoods. Hover over the shapes to see their names. There's Terminal Tower in the heart of downtown. I marked some neighboring cities to get a sense of the geography.
+Here is a plot of Cuyahoga County, Cleveland, and its 34 SPAs. Hover over the shapes to see their names. There's Terminal Tower in the heart of downtown. Progressive field is a few blocks away, and 7.0 miles from my home in Cleveland Heights. Mayfield is where Progressive Insurance is headquartered. That's where I work when I need to go into the office (I work from home).
 
 ```{r}
 #| code-fold: true
@@ -182,7 +182,7 @@ USE_API <- FALSE
 
 The Census Bureau API allows you to select multiple variables from a single census file. There are a few files for each census, and the variable names change. I want the Cleveland area population in 2000, 2010, 2020, and the American Community Survey (ACS) 1-year estimate from 2023 (most recent). So despite the handiness of **tidycensus** package, data collection is still going to be a bit tedious.
 
-The [decennial census developer page](https://www.census.gov/data/developers/data-sets/decennial-census.html) lists the accessible datasets: 2000, 2010, and 2020. Before you do anything, you'll need an API key from the Bureau. This is quick and easy: just click the "Request a KEY" tile in the menu at the left. The Census Bureau emails you a key. Best practice is to save the key in an .Renviron file.
+The [decennial census developer page](https://www.census.gov/data/developers/data-sets/decennial-census.html) lists the accessible datasets: 2000, 2010, and 2020. You need an API key from the Bureau before you can do anything. This is quick and easy: just click the "Request a KEY" tile in the menu at the left. The Census Bureau emails you a key. Best practice is to save the key in an .Renviron file.
 
 ``` r
 usethis::edit_r_environ(scope = "project")
@@ -194,11 +194,11 @@ This opens (or creates) a .Renviron file in your project root. Add your key. The
 CENSUS_API_KEY="abc123"
 ```
 
-Now we're ready to pull census data. I'll start with 2020.
+Now you can pull census data. I'll start with 2020.
 
 ## 2020
 
-Through trial and error, I discovered the Redistricting Data (PL 94-171) contains overall population. There is a full [list of variables](https://api.census.gov/data/2020/dec/pl/variables.html) that represent the various sub-groups of the population. I used it and the `tidycensus::load_variables()` function to identify the ones I want. I'll include race/ethnicity to investigate demographic trends. 
+The [decennial census developer page](https://www.census.gov/data/developers/data-sets/decennial-census.html) has several data files for each census. Through trial and error, I discovered **Redistricting Data (PL 94-171)** contains overall population. There is a full [list of variables](https://api.census.gov/data/2020/dec/pl/variables.html) that represent the various sub-groups of the population. I used it and the `tidycensus::load_variables()` function to identify the ones I want. I'll include race/ethnicity to investigate demographic trends.
 
 ```{r}
 #| code-fold: false
@@ -241,7 +241,7 @@ pl_2020_vars <-
 pl_2020_vars
 ```
 
-The Demographic Profile contains age counts, so I'll grab that too since I am curious about general age patterns.
+The **Demographic Profile** contains age data.
 
 ```{r}
 #| code-fold: false
@@ -255,7 +255,7 @@ dp_2020_vars <-
   )
 ```
 
-Clean these too.
+I'll ignore sex and aggregate the ages into ten-year buckets.
 
 ```{r}
 #| code-fold: true
@@ -281,7 +281,7 @@ dp_2020_vars <-
 dp_2020_vars
 ```
 
-With the variable names in hand, we can request the data from the API. Cleveland is one of 59 subdivisions within Cuyahoga County. Counties are subdivided into census tracts, and census tracts are subdivided into census blocks. Cities often overlap census tracts, so I'll defined Cleveland by joining to the `cleve_blocks` data I got from Cleveland Open Data.
+With the variables identified, request the data from the API. Cleveland is one of 59 subdivisions within Cuyahoga County. I'll download the subdivision data to get a total count for Cuyahoga County and for Cleveland. Counties are composed of census tracts, and census tracts are composed of census blocks. Cities overlap census tracts, so I'll download the block-level data and join to the `cleve_blocks` dataset from Cleveland Open Data. Urban Partners defined their *Downtown Core* and *Westside* areas by tract and some blocks from the *Central* SPA. I figured out which tracts and blocks by studying their map and swearing a lot.
 
 ```{r}
 #| code-fold: true
@@ -295,8 +295,9 @@ my_rpt_relevel <- function(x) {
   return(x)
 }
 
-# Urban Partners defn of Westside, uses tracts.
-westside_tracts <- c(
+# Urban Partners defn of Westside, uses tracts. The block-level data
+# includes the tract number.
+westside_tracts_2020 <- c(
   "103100", "103400", "103500", "103602", "103800", "103900", "104100", 
   "104200", "104300", "197800", "197700", "197500", "104400"
 )
@@ -341,37 +342,37 @@ if (USE_API) {
       value = sum(value)
     )
   
-  tract_2020_pl <- 
-    get_decennial( 
-      geography = "tract",
-      sumfile = "pl",
-      variables = pl_2020_vars$variable,
-      state = "OH",
-      county = "Cuyahoga",
-      geometry = TRUE, 
-      year = 2020
-    ) |> 
-    inner_join(pl_2020_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    )
-  
-  tract_2020_dp <- 
-    get_decennial( 
-      geography = "tract",
-      sumfile = "dp",
-      variables = dp_2020_vars$variable,
-      state = "OH",
-      county = "Cuyahoga",
-      geometry = TRUE, 
-      year = 2020
-    ) |>
-    inner_join(dp_2020_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    )
+  # tract_2020_pl <- 
+  #   get_decennial( 
+  #     geography = "tract",
+  #     sumfile = "pl",
+  #     variables = pl_2020_vars$variable,
+  #     state = "OH",
+  #     county = "Cuyahoga",
+  #     geometry = TRUE, 
+  #     year = 2020
+  #   ) |> 
+  #   inner_join(pl_2020_vars, by = "variable") |>
+  #   summarize(
+  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
+  #     value = sum(value)
+  #   )
+  # 
+  # tract_2020_dp <- 
+  #   get_decennial( 
+  #     geography = "tract",
+  #     sumfile = "dp",
+  #     variables = dp_2020_vars$variable,
+  #     state = "OH",
+  #     county = "Cuyahoga",
+  #     geometry = TRUE, 
+  #     year = 2020
+  #   ) |>
+  #   inner_join(dp_2020_vars, by = "variable") |>
+  #   summarize(
+  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
+  #     value = sum(value)
+  #   )
   
   block_2020_pl <- 
     get_decennial( 
@@ -412,7 +413,7 @@ if (USE_API) {
     mutate(
       rpt_level = my_rpt_relevel(rpt_level),
       greater_downtown = case_when(
-        str_sub(GEOID, 6, 11) %in% westside_tracts ~ "Westside",
+        str_sub(GEOID, 6, 11) %in% westside_tracts_2020 ~ "Westside",
         str_sub(GEOID, 6, 11) %in% downtown_core_tracts ~ "Downtown Core",
         GEOID %in% downtown_core_blocks_2020 ~ "Downtown Core",
         TRUE ~ "Other"
@@ -423,10 +424,7 @@ if (USE_API) {
         greater_downtown, levels = c("Downtown Core", "Westside", "Other"))
     )
   
-  save(
-    subdiv_2020, tract_2020, block_2020,
-    file = "decennial_2020.Rdata"
-  )
+  save(subdiv_2020, block_2020, file = "decennial_2020.Rdata")
 
 } else {
   
@@ -552,9 +550,8 @@ total_pop_plot <- function(subdiv_yyyy, block_yyyy, yyyy) {
   ) +
   labs(
     title = glue("Cuyahoga County Population, {yyyy}"),
-    subtitle = glue("Cuyahoga County Subdivisions (sage),\n",
-                   "City of Cleveland census tracts (dark green), and \n",
-                   "Cleveland Neighborhoods (clusters of census tracts).")
+    subtitle = glue(
+      "Cuyahoga County Subdivisions (sage) and Cleveland SPAs (green).")
   )
 
 girafe(ggobj = p)
@@ -562,10 +559,11 @@ girafe(ggobj = p)
 }
 ```
 
-Cleveland's population was 372,624 in 2020. The Downtown neighborhood had 13,302 people. The Downtown Core, which included a portion of the Central neighborhood, had 18,708 people.
+The data is sliced three ways below. The top section of the table below is the subdivision data. Cuyahoga County has 1.3 million people with Cleveland's at 372,624. The second section groups the block-level data by SPA. The *Downtown* SPA had 13,302 people. This matches the [data table on Cleveland Open Data](https://data.clevelandohio.gov/datasets/ClevelandGIS::census-2020-analysis/explore?layer=0&location=41.454326%2C-81.671523%2C10.98&showTable=true). The *Downtown Core* defined by Urban Partners, which included portions of the *Central*, *Ohio City*, and *Cuyahoga Valley* SPAs, had 18,708 people.
+
+The map on the second tab shows Cuyahoga County and all of its subdivisions. Cleveland is the largest, and each of its SPAs are broken out. The *Downtown* SPA is highlighted. The Urban Partners extensions to downtown aren't shown.
 
 ::: panel-tabset
-
 ### Table
 
 ```{r}
@@ -579,12 +577,11 @@ total_pop_table(subdiv_2020, block_2020, 2020)
 #| echo: false
 total_pop_plot(subdiv_2020, block_2020, 2020) 
 ```
-
 :::
 
 ## 2010
 
-Unfortunately, getting 2010 and 2000 isn't as simple as changing the year parameter in the API calls because they use a different file - Summary File 1.
+Unfortunately, pulling 2010 and 2000 isn't as simple as changing the year parameter in the API calls because they use a different file, **Summary File 1**.
 
 ```{r}
 #| code-fold: false
@@ -598,6 +595,8 @@ sf1_2010_vars <-
     !str_detect(name, "^PCT012")
   )
 ```
+
+I'll prepare the variables the same way as with 2020.
 
 ```{r}
 #| code-fold: true
@@ -640,11 +639,14 @@ sf1_2010_vars <-
 sf1_2010_vars
 ```
 
-Request the data from the API.
+Request the data from the API. This time I cannot join to `cleve_blocks` to get precise mappings of census blocks to SPAs. Instead, I'll join to the `cleve_neigh` shape file to spatially join to the SPAs. This turns out to be *almost* as good, but not perfect.
 
 ```{r}
 #| code-fold: true
 #| results: hide
+
+# Tract definition are same for 2010.
+westside_tracts_2010 <- westside_tracts_2020
 
 downtown_core_tracts_2010 <- c(
   "103300", "107101", "107701", "107802", "109301")
@@ -674,22 +676,22 @@ if (USE_API) {
       NAME = str_trim(NAME)
     )
   
-  tract_2010 <- 
-    get_decennial( 
-      geography = "tract",
-      sumfile = "sf1",
-      variables = sf1_2010_vars$variable,
-      state = "OH",
-      county = "Cuyahoga",
-      geometry = TRUE, 
-      year = 2010
-    ) |> 
-    inner_join(sf1_2010_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    ) |>
-    mutate(rpt_level = my_rpt_relevel(rpt_level))
+  # tract_2010 <- 
+  #   get_decennial( 
+  #     geography = "tract",
+  #     sumfile = "sf1",
+  #     variables = sf1_2010_vars$variable,
+  #     state = "OH",
+  #     county = "Cuyahoga",
+  #     geometry = TRUE, 
+  #     year = 2010
+  #   ) |> 
+  #   inner_join(sf1_2010_vars, by = "variable") |>
+  #   summarize(
+  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
+  #     value = sum(value)
+  #   ) |>
+  #   mutate(rpt_level = my_rpt_relevel(rpt_level))
 
   block_2010_0 <- 
     get_decennial( 
@@ -713,7 +715,7 @@ if (USE_API) {
     mutate(
       rpt_level = my_rpt_relevel(rpt_level),
       greater_downtown = case_when(
-        str_sub(GEOID, 6, 11) %in% westside_tracts ~ "Westside",
+        str_sub(GEOID, 6, 11) %in% westside_tracts_2010 ~ "Westside",
         str_sub(GEOID, 6, 11) %in% downtown_core_tracts_2010 ~ "Downtown Core",
         GEOID %in% downtown_core_blocks_2010 ~ "Downtown Core",
         TRUE ~ "Other"
@@ -725,10 +727,7 @@ if (USE_API) {
     ) |>
     select(GEOID, NAME, geometry, rpt_group, rpt_level, value, SPA, greater_downtown)
   
-  save(
-    subdiv_2010, tract_2010, block_2010,
-    file = "decennial_2010.Rdata"
-  )
+  save(subdiv_2010, block_2010, file = "decennial_2010.Rdata")
 
 } else {
   
@@ -737,12 +736,11 @@ if (USE_API) {
 }
 ```
 
-The sum of the neighborhoods, 395,601, didn't quite roll match the city, 396,815. There must be city blocks whose centers are not captured in the neighborhoods shape. I haven't thought of a good way to ferret them out, so I think I'll just let this go.
+This time the sum of the neighborhoods, 395,601, doesn't quite equal the city total, 396,815. There must be city blocks whose centers are not captured in the shapes in `cleve_neigh`. Comparing my values to those in the [data table on Cleveland Open Data](https://data.clevelandohio.gov/datasets/ClevelandGIS::census-2020-analysis/explore?layer=0&location=41.454326%2C-81.671523%2C10.98&showTable=true), the largest differences are in *Euclid Green,* *Kamm's Corners*, and *Hopkins*. I haven't thought of a good way to fix this, so I'm settling for "close enough".
 
-The Downtown population was only 9,464, so it has indeed grown quite a bit from 2010 to 2020.
+The *Downtown* SPA population of 9,464 *does* match the value reported in Cleveland Open Data. It was quite a bit lower than 2020 (13,302). My *Downtown Core* population of 15,156 is slightly different from Urban Partner's value of 15,330. The *Westside* population does match though.
 
 ::: panel-tabset
-
 ### Table
 
 ```{r}
@@ -756,12 +754,11 @@ total_pop_table(subdiv_2010, block_2010, 2010)
 #| echo: false
 total_pop_plot(subdiv_2010, block_2010, 2010) 
 ```
-
 :::
 
 ## 2000
 
-2000 is similar to 2010 in that it uses Summary File 1.
+2000 is similar to 2010 in that it uses **Summary File 1**.
 
 ```{r}
 #| code-fold: false
@@ -778,6 +775,8 @@ sf1_2000_vars <-
     !str_detect(name, "^PCT013")
   )
 ```
+
+Same process: prepare the variables.
 
 ```{r}
 #| code-fold: true
@@ -820,16 +819,19 @@ sf1_2000_vars <-
 sf1_2010_vars
 ```
 
-Request the data from the API.
+Request the data from the API. I'll used the `cleve_neigh` shape file again to identify the SPAs. Tract and block identifiers can change from census to census, so I had to make some changes to the *Downtown Core* definition. I used the same block identifiers for Urban Partners' definitions, but they did not include 2020 in their report, so I'm not sure how much this differs.
 
 ```{r}
 #| code-fold: true
 #| results: hide
 
+# Tract definition are same for 2000.
+westside_tracts_2000 <- westside_tracts_2020
+
 downtown_core_tracts_2000 <- c(
   "107100", "107200", "107300", "107400", "107500", "107600", "107700",
   "107800", "107900", "109200")
-  # "103300", "107101", "107701", "107802", "109301")
+
 downtown_core_blocks_2000 <- 
   paste0("39035108701", c("3000", "3001", "3002", "3003", "3004"))
 
@@ -868,22 +870,22 @@ if (USE_API) {
     select(-value) |>
     inner_join(subdiv_2000_1, by = c("GEOID", "rpt_group", "rpt_level"))
   
-  tract_2000 <- 
-    get_decennial( 
-      geography = "tract",
-      sumfile = "sf1",
-      variables = sf1_2000_vars$variable,
-      state = "OH",
-      county = "Cuyahoga",
-      geometry = TRUE, 
-      year = 2000
-    ) |> 
-    inner_join(sf1_2000_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    ) |>
-    mutate(rpt_level = my_rpt_relevel(rpt_level))
+  # tract_2000 <- 
+  #   get_decennial( 
+  #     geography = "tract",
+  #     sumfile = "sf1",
+  #     variables = sf1_2000_vars$variable,
+  #     state = "OH",
+  #     county = "Cuyahoga",
+  #     geometry = TRUE, 
+  #     year = 2000
+  #   ) |> 
+  #   inner_join(sf1_2000_vars, by = "variable") |>
+  #   summarize(
+  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
+  #     value = sum(value)
+  #   ) |>
+  #   mutate(rpt_level = my_rpt_relevel(rpt_level))
 
   block_2000_0 <- 
     get_decennial( 
@@ -907,7 +909,7 @@ if (USE_API) {
     mutate(
       rpt_level = my_rpt_relevel(rpt_level),
       greater_downtown = case_when(
-        str_sub(GEOID, 6, 11) %in% westside_tracts ~ "Westside",
+        str_sub(GEOID, 6, 11) %in% westside_tracts_2000 ~ "Westside",
         str_sub(GEOID, 6, 11) %in% downtown_core_tracts_2000 ~ "Downtown Core",
         GEOID %in% downtown_core_blocks_2000 ~ "Downtown Core",
         TRUE ~ "Other"
@@ -919,10 +921,7 @@ if (USE_API) {
     ) |>
     select(GEOID, NAME, geometry, rpt_group, rpt_level, value, SPA, greater_downtown)
   
-  save(
-    subdiv_2000, tract_2000, block_2000,
-    file = "decennial_2000.Rdata"
-  )
+  save(subdiv_2000, block_2000, file = "decennial_2000.Rdata")
 
 } else {
   
@@ -931,12 +930,9 @@ if (USE_API) {
 }
 ```
 
-We have the same problem as 2010 - the sum of the neighborhoods, 477,107, didn't quite roll match the city, 478,403. 
-
-Wow, Cleveland's population was 478,403 in 2000 - that's a 100K more than today! It sure has dropped a lot over the last two decades. On the other hand, only 6,310 people lived downtown. The resurgence of Downtown does not seem to be a recent phenomena.
+As with 2010, the sum of the neighborhoods, 477,107, doesn't quite match the city value, 478,403, but that is still pretty close. Wow, 478,403 people in 2000, that's 100K more than 2020. On the other hand, only 6,310 people lived *Downtown*. The *Downtown* resurgence of does not seem to be a recent phenomena.
 
 ::: panel-tabset
-
 ### Table
 
 ```{r}
@@ -950,12 +946,11 @@ total_pop_table(subdiv_2000, block_2000, 2000)
 #| echo: false
 total_pop_plot(subdiv_2000, block_2000, 2000) 
 ```
-
 :::
 
 ## 2023 (ACS)
 
-The 2023 American Community Survey publishes a 1-year and 5-year average. We'll grab the 1-year to get the latest population figures.
+The 2023 American Community Survey publishes a 1-year and 5-year average. The 1-year survey might be helpful, but it doesn't have block-level data. I'll download the subdivision file and check in on Cleveland as a whole.
 
 ```{r}
 #| code-fold: false
@@ -970,6 +965,8 @@ acs1_2023_vars <-
     name <= "B03002_012"
   )
 ```
+
+Same variable prep.
 
 ```{r}
 #| code-fold: true
@@ -1041,27 +1038,24 @@ if (USE_API) {
       NAME = str_trim(NAME)
     )
   
-  tract_2023 <- 
-    get_acs( 
-      geography = "tract",
-      sumfile = "acs1",
-      variables = acs1_2023_vars$variable,
-      state = "OH",
-      county = "Cuyahoga",
-      geometry = FALSE, 
-      year = 2023
-    ) |> 
-    inner_join(acs1_2023_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, rpt_group, rpt_level),
-      value = sum(estimate)
-    ) |>
-    mutate(rpt_level = my_rpt_relevel(rpt_level))
+  # tract_2023 <- 
+  #   get_acs( 
+  #     geography = "tract",
+  #     sumfile = "acs1",
+  #     variables = acs1_2023_vars$variable,
+  #     state = "OH",
+  #     county = "Cuyahoga",
+  #     geometry = FALSE, 
+  #     year = 2023
+  #   ) |> 
+  #   inner_join(acs1_2023_vars, by = "variable") |>
+  #   summarize(
+  #     .by = c(GEOID, NAME, rpt_group, rpt_level),
+  #     value = sum(estimate)
+  #   ) |>
+  #   mutate(rpt_level = my_rpt_relevel(rpt_level))
 
-  save(
-    subdiv_2023, tract_2023,
-    file = "acs1yr_2023.Rdata"
-  )
+  save(subdiv_2023, file = "acs1yr_2023.Rdata")
 
 } else {
   
@@ -1070,9 +1064,7 @@ if (USE_API) {
 }
 ```
 
-Cleveland's population has continued to decline, down from 372,624 in 2020 to 367,523. The ACS does not have block-level data, so I can't do the neighborhood breakdown here. 
-
-But look at Downtown - it's continued to increase.
+Cleveland's population has continued to decline, down to 367,523 from 372,624 in 2020.
 
 ```{r}
 #| echo: false
@@ -1100,32 +1092,11 @@ subdiv_2023 |>
   gt::cols_label(subgrp = "", pop = "Population")
 ```
 
-```{r eval=FALSE}
-#| results: hide
-
-# 34 features (neighborhoods).
-hood_shp <-
-  st_read("Cleveland_Neighborhoods/Cleveland_Neighborhoods.shp") |>
-  st_make_valid() |>
-  st_transform(st_crs(tract_2000))
-
-hood_2023 <- 
-  tract_2023 |>
-  inner_join(hood_2020 |> select(GEOID, SPANM) |> unique(), by = "GEOID")
-
-hood_shp <- 
-  st_read("Cleveland_Neighborhoods/Cleveland_Neighborhoods.shp") |>
-  st_make_valid() |>
-  st_transform(st_crs(tract_2000))
-
-hood_2000 <- st_join(hood_shp, st_centroid(tract_2000), join = st_contains)
-```
-
 # Population Trends
 
-Downtown Cleveland Inc. defined "Greater Downtown Cleveland" in their report as the "Downtown Core" on the east side of the Cuyahoga and "Westside" to west. Their Downtown Core is bounded by about E. 30th St. and Woodland Ave to the South.[^8]. The Westside is bounded mostly by W. 65th St and Clark Avenue to the south. I'm not sure how they came up with this definition. Maybe it was with census blocks. Their Greater Downtown includes 37,115 people with 18,708 in the Downtown Core. I'll stick with the neighborhoods definition.
+Downtown Cleveland Inc. defined "Greater Downtown Cleveland" in their report as the "Downtown Core" on the east side of the Cuyahoga and "Westside" to west. Their Downtown Core is bounded by about E. 30th St. and Woodland Ave to the South.[^9]. The Westside is bounded mostly by W. 65th St and Clark Avenue to the south. I'm not sure how they came up with this definition. Maybe it was with census blocks. Their Greater Downtown includes 37,115 people with 18,708 in the Downtown Core. I'll stick with the neighborhoods definition.
 
-[^8]: There is a map on page 3 of their [report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf).
+[^9]: There is a map on page 3 of their [report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf).
 
 Let's start with a neighborhood table showing the population changes since 2000. The Downtown population was only 8,227 in 2000 - `r percent(8227/478403, 1)` of Cleveland's 478,403 population. Cleveland's population fell `r percent((478403-396815)/478403, 1)` over the next decade. Hit hardest the east side neighborhoods such as Buckeye-Woodhill, Glenville, Kinsman, Lee-Seville, and St.Clair-Superior, all of which lost over 30% of their population. However, Downtown experienced a 15% population *increase* over this period.
 
@@ -1239,7 +1210,7 @@ plot_neigh <- function(.rpt_group, .rpt_level, fill_var, yrs) {
 ```{r}
 #| echo: false
 
-plot_neigh("Total", "Total", d10, "2000 - 2010")
+plot_neigh("Total", "Total", p10, "2000 - 2010")
 ```
 
 ## 2010 - 2020
@@ -1247,15 +1218,7 @@ plot_neigh("Total", "Total", d10, "2000 - 2010")
 ```{r}
 #| echo: false
 
-plot_neigh("Total", "Total", d20, "2010 - 2020")
-```
-
-## 2020 - 2023
-
-```{r}
-#| echo: false
-
-plot_neigh("Total", "Total", d10, "2000 - 2010")
+plot_neigh("Total", "Total", p20, "2010 - 2020")
 ```
 
 ## Table
@@ -1627,7 +1590,6 @@ neigh_gt("Age", "65+ yr")
 :::
 ::::::::::
 
-
 ```{r}
 #| eval: false
 #| include: false
@@ -1693,4 +1655,3 @@ my_split_gt <- function(x, .rpt_group, .var_name, .var_val, .spanner, .title, .y
 }
 
 ```
-
