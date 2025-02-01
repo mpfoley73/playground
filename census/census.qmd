@@ -1094,11 +1094,7 @@ subdiv_2023 |>
 
 # Population Trends
 
-Downtown Cleveland Inc. defined "Greater Downtown Cleveland" in their report as the "Downtown Core" on the east side of the Cuyahoga and "Westside" to west. Their Downtown Core is bounded by about E. 30th St. and Woodland Ave to the South.[^9]. The Westside is bounded mostly by W. 65th St and Clark Avenue to the south. I'm not sure how they came up with this definition. Maybe it was with census blocks. Their Greater Downtown includes 37,115 people with 18,708 in the Downtown Core. I'll stick with the neighborhoods definition.
-
-[^9]: There is a map on page 3 of their [report](https://static1.squarespace.com/static/645ba4265ac81f7c3a42f05d/t/6491ab0e8821d157e67c6f24/1687268112978/Downtown%2BCLE%2BMarket%2BStudy%2B2023.pdf).
-
-Let's start with a neighborhood table showing the population changes since 2000. The Downtown population was only 8,227 in 2000 - `r percent(8227/478403, 1)` of Cleveland's 478,403 population. Cleveland's population fell `r percent((478403-396815)/478403, 1)` over the next decade. Hit hardest the east side neighborhoods such as Buckeye-Woodhill, Glenville, Kinsman, Lee-Seville, and St.Clair-Superior, all of which lost over 30% of their population. However, Downtown experienced a 15% population *increase* over this period.
+Cleveland lost 17% of its population between 2000 and 2010. The population loss was widespread, but especially pronounced on the east side. The *Downtown* SPA was the lone exception, actually *increasing* its population 50%. Parts of the city recovered population over the next decade, in particular, *University Circle* and *Ohio City*. *Downtown* grew another 41%. The east side continued to decline. *Glenville*, *Kinsman*, *Saint Clair-Superior*, and *Woodland Hills* have all lost about 50% of their population since 2000.
 
 ```{r}
 #| echo: false
@@ -1228,75 +1224,82 @@ plot_neigh("Total", "Total", p20, "2010 - 2020")
 #| echo: false
 
 neigh_gt <- function(.rpt_group, .rpt_level) {
+  
+  by_neigh <-
+    neigh_wide |>
+    as_tibble() |>
+    filter(rpt_group == .rpt_group, rpt_level == .rpt_level) |>
+    arrange(SPA) |>
+    janitor::adorn_totals() |>
+    mutate(
+      p10 = pop_2010 / pop_2000 - 1,
+      p20 = pop_2020 / pop_2010 - 1
+    ) |>
+    select(SPA, pop_2000, pop_2010, p10, pop_2020, p20)
+  
+  by_subdiv <- 
+    subdiv_wide |> 
+    as_tibble() |>
+    filter(rpt_group == .rpt_group, rpt_level == .rpt_level) |>
+    mutate(SPA = if_else(SPA == "Cleveland", SPA, "Other")) |>
+    summarize(.by = SPA, across(starts_with("pop"), sum)) |>
+    arrange(SPA) |>
+    janitor::adorn_totals() |>
+    mutate(
+      p10 = pop_2010 / pop_2000 - 1,
+      p20 = pop_2020 / pop_2010 - 1,
+      p23 = pop_2023 / pop_2020 - 1
+    ) |>
+    select(SPA, pop_2000, pop_2010, p10, pop_2020, p20, pop_2023, p23)
+
   bind_rows(
-    neigh_wide |> 
-      filter(rpt_group == .rpt_group, rpt_level == .rpt_level) |>
-      as_tibble() |>
-      slice_head(n = 1, by = c(rpt_group, rpt_level, SPA)),
-    subdiv_wide |>
-      filter(SPA == "Cleveland", rpt_group == .rpt_group, rpt_level == .rpt_level) |>
-      mutate(SPA = "Total")
+    `Cuyahoga County Subdivisions` = by_subdiv,
+    `Cleveleland Neighborhoods` = by_neigh,
+    .id = "Grouping"
   ) |>
-  # pivot_wider(names_from = yr, values_from = value) |>
-  # mutate(
-  #   d10 = `2010` - `2000`,
-  #   p10 = d10 / `2000`,
-  #   d20 = `2020` - `2010`,
-  #   p20 = d20 / `2010`,
-  #   d23 = `2023` - `2020`,
-  #   p23 = d23 / `2020`
-  # ) |>
-  select(SPA, `pop_2000`, `pop_2010`, d10, p10, `pop_2020`, d20, p20, `pop_2023`, d23, p23) |>
-  mutate(
-    SPA = factor(SPA),
-    SPA = fct_relevel(SPA, "Total", after = Inf)
-  ) |>
-  arrange(SPA) |>
-  gt::gt() |>
-  gt::fmt_number(c(2, 3, 4, 6, 7, 9, 10), decimals = 0) |>
-  gt::fmt_percent(c(5, 8, 11), decimals = 0) |>
-  gt::tab_style(
-    style = cell_text(color = "firebrick4"),
-    locations = cells_body(columns = c(d10, p10), rows = d10 < 0)
-  ) |>
-  gt::tab_style(
-    style = cell_text(color = "firebrick4"),
-    locations = cells_body(columns = c(d20, p10), rows = d20 < 0)
-  ) |>
-  gt::tab_style(
-    style = cell_text(color = "firebrick4"),
-    locations = cells_body(columns = c(d23, p23), rows = d23 < 0)
-  ) |>
-  gt::tab_style(
-    style = cell_fill(color = "darkseagreen1"),
-    locations = cells_body(rows = SPA == "Downtown")
-  ) |>
-  gt::tab_style(
-    style = cell_text(weight = "bold"),
-    locations = cells_body(rows = SPA == "Total")
-  ) |>
-  gt::cols_align("left", 1) |>
-  gt::cols_label(
-    pop_2000 = "2000", pop_2010 = "2010", pop_2020 = "2020", pop_2023 = "2023",
-    SPA = "",
-    d10 = htmltools::HTML("&Delta;"),
-    p10 = "%",
-    d20 = htmltools::HTML("&Delta;"),
-    p20 = "%",
-    d23 = htmltools::HTML("&Delta;"),
-    p23 = "%"
-  ) |>
-  gt::tab_style(
-    style = cell_borders("right", "gray80"),
-    locations = cells_body(columns = c(1, 2, 5, 8))
-  ) |>
-  gt::tab_header(
-    glue("Changing {.rpt_level} Population in Cleveland, 2000-2023"),
-    "Decennial and ACS censuses"
-  ) |>
-  gt::tab_options(
-    heading.align = "left"
-  )
+    group_by(Grouping) |>
+    gt::gt() |>
+    gt::fmt_number(c(3, 4, 6, 8), decimals = 0) |>
+    gt::fmt_percent(c(5, 7, 9), decimals = 0) |>
+    gt::tab_style(
+      style = cell_text(color = "firebrick4"),
+      locations = cells_body(columns = p10, rows = p10 < 0)
+    ) |>
+    gt::tab_style(
+      style = cell_text(color = "firebrick4"),
+      locations = cells_body(columns = p20, rows = p20 < 0)
+    ) |>
+    gt::tab_style(
+      style = cell_text(color = "firebrick4"),
+      locations = cells_body(columns = p23, rows = p23 < 0)
+    ) |>
+    gt::tab_style(
+      style = cell_fill(color = "honeydew2"),
+      locations = cells_group()
+    ) |>
+    gt::tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(rows = SPA == "Total")
+    ) |>
+    gt::tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(rows = SPA %in% c("Cleveland", "Downtown"), columns = 2)
+    ) |>
+    gt::cols_label(
+      pop_2000 = "2000", pop_2010 = "2010", pop_2020 = "2020", pop_2023 = "2023",
+      SPA = "",
+      p10 = htmltools::HTML("&Delta;"),
+      p20 = htmltools::HTML("&Delta;"),
+      p23 = htmltools::HTML("&Delta;")
+    ) |>
+    gt::sub_missing(missing_text = "") |>
+    gt::tab_header(
+      glue("Changing {.rpt_level} Population in Cleveland, 2000-2023"),
+      "Decennial and ACS censuses"
+    ) |>
+    gt::tab_options(
+      heading.align = "left"
+    )
 }
 
 neigh_gt("Total", "Total")
@@ -1305,353 +1308,118 @@ neigh_gt("Total", "Total")
 
 # Race/ethnicity
 
-::::::: panel-tabset
-## Black
-
-::: panel-tabset
-### 2000 - 2010
+While Cleveland's white and black populations have fallen, Asian, Hispanic, and other (including two or more races) have increased. The non-white populations have increased in the rest of Cuyahoga County, while white has fallen from 80% in 2000 to 67% in 2023.
 
 ```{r}
 #| echo: false
 
-plot_neigh("Race/ethnicity", "Black", d10, "2000 - 2010")
+subdiv_long |>
+  filter(rpt_group %in% c("Race/ethnicity")) |>
+  mutate(SPA = if_else(SPANM == "Cleveland", SPANM, "Other Parts of Cuyahoga County")) |>
+  summarize(.by = c(yr, SPA, rpt_level), value = sum(value)) |>
+  mutate(.by = c(yr, SPA), pct = value / sum(value)) |>
+  pivot_wider(names_from = yr, values_from = c(value, pct)) |>
+  select(SPA, rpt_level, ends_with("2000"), ends_with("2010"), ends_with("2020"), 
+         ends_with("2023")) |>
+  mutate(across(starts_with("pct"), \(x) percent(x, 1))) |>
+  janitor::adorn_totals(where = "row", fill = "", na.rm = TRUE, name = "County Total",
+                        starts_with("value")) |>
+  mutate(
+    rpt_level = factor(rpt_level, levels = levels(subdiv_long$rpt_level)),
+    SPA = factor(SPA, levels = c("Cleveland", "Other Parts of Cuyahoga County", "County Total"))
+  ) |>
+  arrange(SPA, rpt_level) |>
+  group_by(SPA) |>
+  gt::gt() |>
+  gt::fmt_number(starts_with("value"), decimals = 0) |>
+  gt::sub_missing(missing_text = "Total") |>
+  gt::cols_label(
+    rpt_level = "",
+    value_2000 = "2000", value_2010 = "2010", value_2020 = "2020", value_2023 = "2023",
+    pct_2000 = "", pct_2010 = "", pct_2020 = "", pct_2023 = ""
+  ) |>
+  gt::cols_align("left", rpt_level) |>
+  gt::tab_style(cell_borders("right", "gray80"), cells_body(columns = c(2, 4, 6, 8))) |>
+  gt::tab_style(gt::cell_fill("honeydew2"), cells_group()) |>
+  gt::tab_header("Cuyahoga Race/ethnicity Population Change") |>
+  gt::tab_options(heading.align = "left")
 ```
 
-### 2010 - 2020
+The SPAs with historically high concentrations of black populations like *Glenville*, *Hough*, and *Mount Pleasant*, have experienced the greatest population declines. The more integrated SPAs like *Downtown*, *Bellaire-Puritas*, and *Brooklyn Centre*, have tended to retain their populations. These neighborhoods have become more diverse with rising Hispanic, Asian, and _other_ populations.
 
 ```{r}
+#| fig-height: 9
 #| echo: false
 
-plot_neigh("Race/ethnicity", "Black", d20, "2010 - 2020")
+x <-
+  neigh_long |>
+  filter(rpt_group %in% c("Race/ethnicity", "Total")) |>
+  mutate(.by = c(yr, SPA), pct = value / sum(value) * 2)
+# neigh_long |> filter(rpt_group == "Total", yr == "2000", SPA == "Collinwood Nottingham")
+x_tooltip <- 
+  x |>
+  select(-rpt_group) |>
+  pivot_wider(names_from = rpt_level, values_from = c(value, pct)) |>
+  mutate(tt = glue(
+    "{SPA} | {yr}\n\n",
+    "{percent(pct_Black, 1)} Black ({comma(value_Black)})\n",
+    "{percent(pct_White, 1)} White ({comma(value_White)})\n",
+    "{percent(pct_Hispanic, 1)} Hispanic ({comma(value_Hispanic)})\n",
+    "{percent(pct_Asian, 1)} Asian ({comma(value_Asian)})\n",
+    "{percent(pct_Other, 1)} Other ({comma(value_Other)})\n\n",
+    "{percent(pct_Total, 1)} Total ({comma(value_Total)})",
+  )) |>
+  select(yr, SPA, tt)
+
+p <-
+  x |> 
+  inner_join(x_tooltip, by = c("yr", "SPA")) |>
+  filter(rpt_level != "Total") |>
+  ggplot(aes(x = as.factor(yr), y = value)) +
+  geom_col_interactive(aes(fill = rpt_level, tooltip = tt)) + 
+  facet_wrap(vars(SPA)) +
+  labs(y = NULL, fill = NULL, title = "Cleveland Population by Race/ethnicity") +
+  scale_y_continuous(labels = number_format(scale_cut = cut_short_scale())) +
+  theme(legend.position = "top")
+
+girafe(ggobj = p)
 ```
-
-### Table
-
-```{r}
-neigh_gt("Race/ethnicity", "Black")
-```
-:::
-
-## White
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-
-plot_neigh("Race/ethnicity", "White", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-
-plot_neigh("Race/ethnicity", "White", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-neigh_gt("Race/ethnicity", "White")
-```
-:::
-
-## Hispanic
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-
-plot_neigh("Race/ethnicity", "Hispanic", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-
-plot_neigh("Race/ethnicity", "Hispanic", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-neigh_gt("Race/ethnicity", "Hispanic")
-```
-:::
-
-## Asian
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-
-plot_neigh("Race/ethnicity", "Asian", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-
-plot_neigh("Race/ethnicity", "Asian", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-neigh_gt("Race/ethnicity", "Asian")
-```
-:::
-:::::::
 
 # Age
 
-:::::::::: panel-tabset
-## Under 15 yrs
-
-::: panel-tabset
-### 2000 - 2010
+Unfortunately, there 2020 and 2023 ACS censuses do not provide block level data for age. We can still make some inferences from the higher-level summaries. The one trend that stands out is the decline in children under 15 in Cuyahoga County, and especially Cleveland. Older people aged 55 and up have held or even increased their numbers.
 
 ```{r}
 #| echo: false
-plot_neigh("Age", "Under 15 yrs", d10, "2000 - 2010")
-```
 
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "Under 15 yrs", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "Under 15 yrs")
-```
-:::
-
-## 15 to 24 yrs
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-plot_neigh("Age", "15 to 24 yrs", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "15 to 24 yrs", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "15 to 24 yrs")
-```
-:::
-
-## 25 to 34 yrs
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-plot_neigh("Age", "25 to 34 yrs", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "25 to 34 yrs", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "25 to 34 yrs")
-```
-:::
-
-## 35 to 44 yrs
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-plot_neigh("Age", "35 to 44 yrs", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "35 to 44 yrs", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "35 to 44 yrs")
-```
-:::
-
-## 45 to 54 yrs
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-plot_neigh("Age", "45 to 54 yrs", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "45 to 54 yrs", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "45 to 54 yrs")
-```
-:::
-
-## 55 to 64 yrs
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-plot_neigh("Age", "55 to 64 yrs", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "55 to 64 yrs", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "55 to 64 yrs")
-```
-:::
-
-## 65+ yr
-
-::: panel-tabset
-### 2000 - 2010
-
-```{r}
-#| echo: false
-plot_neigh("Age", "65+ yr", d10, "2000 - 2010")
-```
-
-### 2010 - 2020
-
-```{r}
-#| echo: false
-plot_neigh("Age", "65+ yr", d20, "2010 - 2020")
-```
-
-### Table
-
-```{r}
-#| echo: false
-neigh_gt("Age", "65+ yr")
-```
-:::
-::::::::::
-
-```{r}
-#| eval: false
-#| include: false
-
-# cuya_roads <- tigris::roads("OH", "Cuyahoga", 2022, class = "sf")
-# cuya_roads <- tigris::primary_roads("OH", "Cuyahoga", 2022, class = "sf")
-# cuya_roads <- tigris::primary_secondary_roads("OH", 2022, class = "sf")
-
-# cuya_rivers <- tigris::linear_water(state = "OH", county = "Cuyahoga", 2019, class = "sf")
-
-# cuya_blocks <- st_read(file.path(
-#   "inputs/Cuyahoga Blocks 2010",
-#   "Decennial_2010_Blocks_Cuyahoga.shp"
-# ))
-# 
-# blocks_2020 <- st_read(file.path(
-#   "inputs/Cuyahoga Blocks 2020",
-#   "Decennial_2020_Blocks_Cuyahoga.shp"
-# ))
-
-# cleve_neighborhoods <-
-#   cleve_blocks |>
-#   summarize(.by = SPA_NAME, geometry = st_union(geometry))
-
-```
-
-```{r}
-
-  
-my_split_gt <- function(x, .rpt_group, .var_name, .var_val, .spanner, .title, .year) {
-  x |>
-    filter(rpt_group == .rpt_group) |>
-    mutate(geo = if_else(!!ensym(.var_name) == .var_val, "MAIN", "Other")) |>
-    mutate(.by = geo, pct = value / sum(value)) |>
-    as_tibble() |>
-    summarize(.by = c(geo, rpt_level), across(c(value, pct), sum)) |>
-    pivot_wider(names_from = geo, values_from = c(value, pct)) |>
-    arrange(rpt_level) |>
-    mutate(
-      rpt_level = fct_drop(rpt_level),
-      value_Total = value_MAIN + value_Other,
-      pct_Total = value_Total / sum(value_Total)
-    ) |>
-    janitor::adorn_totals() |>
-    select(
-      rpt_level, ends_with("MAIN"), ends_with("Other"), ends_with("Total")
-    ) |>
-    gt() |>
-    gt::cols_align("left", 1) |>
-    gt::fmt_number(columns = c(2, 4, 6), decimals = 0) |>
-    gt::fmt_percent(columns = c(3, 5, 7), decimals = 1) |>
-    gt::tab_spanner(.spanner, 2:3) |>
-    gt::tab_spanner("Other", 4:5) |>
-    gt::tab_spanner("Total", 6:7) |>
-    gt::cols_label(
-      rpt_level = "", starts_with("value") ~ "Est.", starts_with("pct") ~ "%"
-    ) |>
-    gt::tab_header(
-      glue("{.title} Population, {.year}"),
-      glue("by {.rpt_group}")
-    ) |>
-    gt::tab_options(heading.align = "left") 
-}
-
+subdiv_long |>
+  filter(rpt_group %in% c("Age")) |>
+  mutate(SPA = if_else(SPANM == "Cleveland", SPANM, "Other Parts of Cuyahoga County")) |>
+  summarize(.by = c(yr, SPA, rpt_level), value = sum(value)) |>
+  mutate(.by = c(yr, SPA), pct = value / sum(value)) |>
+  pivot_wider(names_from = yr, values_from = c(value, pct)) |>
+  select(SPA, rpt_level, ends_with("2000"), ends_with("2010"), ends_with("2020"), 
+         ends_with("2023")) |>
+  mutate(across(starts_with("pct"), \(x) percent(x, 1))) |>
+  janitor::adorn_totals(where = "row", fill = "", na.rm = TRUE, name = "County Total",
+                        starts_with("value")) |>
+  mutate(
+    rpt_level = factor(rpt_level, levels = levels(subdiv_long$rpt_level)),
+    SPA = factor(SPA, levels = c("Cleveland", "Other Parts of Cuyahoga County", "County Total"))
+  ) |>
+  arrange(SPA, rpt_level) |>
+  group_by(SPA) |>
+  gt::gt() |>
+  gt::fmt_number(starts_with("value"), decimals = 0) |>
+  gt::sub_missing(missing_text = "Total") |>
+  gt::cols_label(
+    rpt_level = "",
+    value_2000 = "2000", value_2010 = "2010", value_2020 = "2020", value_2023 = "2023",
+    pct_2000 = "", pct_2010 = "", pct_2020 = "", pct_2023 = ""
+  ) |>
+  gt::cols_align("left", rpt_level) |>
+  gt::tab_style(cell_borders("right", "gray80"), cells_body(columns = c(2, 4, 6, 8))) |>
+  gt::tab_style(gt::cell_fill("honeydew2"), cells_group()) |>
+  gt::tab_header("Cuyahoga Age Population Change") |>
+  gt::tab_options(heading.align = "left")
 ```
