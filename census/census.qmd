@@ -112,7 +112,13 @@ cleve_blocks <- st_read(file.path(
 
 I could just join `cleve_neigh_0` to US Census Bureau data files by the geography elements using the **sf** package. I know exactly which blocks belong in each SPA for 2020, but block definitions change across censuses, so joining to `cleve_neigh_0` will get me the 2000 and 2010 figures. The shape file may not be perfectly precise because I can't quite match quoted population estimates for 2000 and 2010, but it's close.
 
-Load shape files from the **tigris** package to facilitate mapping. I'll get the state, county boundaries, and a few cities. I also got the Terminal town coordinates from Google.
+Load shape files using the **tigris** package to facilitate mapping. I'll get the state, county boundaries, and a few cities. I also got the Terminal town coordinates from Google. I don't want to abuse the US Census Bureau website and API, so I'll set a flag to only download data as I'm developing this script. Once I have what I want, I'll keep my data on my local drive and build my report.
+
+```{r}
+#| code-fold: false
+
+USE_API <- FALSE
+```
 
 ```{r}
 #| code-fold: false
@@ -120,43 +126,41 @@ Load shape files from the **tigris** package to facilitate mapping. I'll get the
 #| warning: false
 #| results: hide
 
-oh_state <- tigris::states(cb = TRUE) |> filter(STUSPS == "OH") 
-
-oh_counties <- tigris::counties(cb = TRUE) |> filter(STUSPS == "OH")
-cuya_county <- oh_counties |> filter(NAME == "Cuyahoga")
-
-oh_places <- tigris::places("OH", year = 2022)
-x <- c("Cleveland Heights", "Mayfield Heights")
-my_places <- oh_places |> filter(NAME %in% x) |> st_centroid()
-
-terminal_tower <- st_sfc(st_point(c(-81.69387, 41.49824)), crs = 4326)
+if (USE_API) {
+  oh_state <- tigris::states(cb = TRUE) |> filter(STUSPS == "OH") 
+  oh_counties <- tigris::counties(cb = TRUE) |> filter(STUSPS == "OH")
+  oh_places <- tigris::places("OH", year = 2024)
+  save(oh_state, oh_counties, oh_places, file = "tigris_shapes.Rdata")
+} else {
+  load("tigris_shapes.Rdata")
+}
 ```
 
-Here is a plot of Cuyahoga County, Cleveland, and its 34 SPAs. Hover over the shapes to see their names. There's Terminal Tower in the heart of downtown. Progressive field is a few blocks away, and 7.0 miles from my home in Cleveland Heights. Mayfield is where Progressive Insurance is headquartered. That's where I work when I need to go into the office (I work from home).
+Here is a plot of Cuyahoga County, Cleveland, and Cleveland's 34 SPAs. Hover over the shapes to see their names. The red dot is Terminal Tower in the heart of downtown. Progressive field is a few blocks away, and 7.0 miles from my home in Cleveland Heights.
 
 ```{r}
 #| code-fold: true
+#| warning: false
 
 p <-
   ggplot() +
-  geom_sf(data = oh_state, color = "gray60") +
-  geom_sf_interactive(
-    data = oh_counties, 
-    aes(tooltip = NAME),
-    fill = "honeydew", color = "gray90"
-  ) +
-  geom_sf(data = cuya_county, fill = "honeydew2", color = "gray80") +
-  geom_sf_interactive(
-    data = cleve_neigh_0,
-    aes(tooltip = SPA_NAME),
-    fill = "honeydew3", color = "honeydew4"
-  ) +
-  geom_sf(data = my_places, color = "honeydew3") +
-  geom_sf(data = terminal_tower, color = "firebrick") +
-  geom_sf_text(data = terminal_tower, aes(label = "Terminal Tower"),
-               size = 3, hjust = .2, vjust = 1, color = "firebrick") +
-  geom_sf_text(data = my_places, aes(label = NAME), size = 3, hjust = .2, vjust = 1) +
-  coord_sf(xlim = c(-82.0, -81.3), ylim = c(41.25, 41.65)) +
+  geom_sf_interactive(data = oh_counties, 
+                      aes(tooltip = paste(NAME, "County")), 
+                      fill = "honeydew", color = "honeydew3") +
+  geom_sf_interactive(data = oh_places, 
+                      aes(tooltip = NAME), fill = "honeydew3", color = "honeydew") +
+  geom_sf(data = oh_counties |> filter(NAME == "Cuyahoga"), 
+          fill = NA, color = "honeydew4", linewidth = 1) +
+  geom_sf_interactive(data = cleve_neigh_0,
+                      aes(tooltip = SPA_NAME),
+                      fill = "honeydew4", color = "honeydew3") +
+  geom_sf_interactive(data = st_sfc(st_point(c(-81.69387, 41.49824)), crs = 4326), 
+                      aes(tooltip = "Terminal Tower"),
+                      size = 3, color = "firebrick") +
+  geom_sf_text_interactive(data = oh_places, aes(label = NAME), 
+                           check_overlap = TRUE, size = 2) +
+  scale_x_continuous(limits = c(-82.0, -81.3)) +
+  scale_y_continuous(limits = c(41.25, 41.65)) +
   theme(
     panel.background = element_rect(fill = "skyblue"),
     panel.grid = element_blank(),
@@ -164,21 +168,14 @@ p <-
   ) +
   labs(
     x = NULL, y = NULL, 
-    title = glue("Cleveland and Surrounding Cities, Cuyahoga County")
+    title = glue("Cuyahoga County, Cleveland, and SPAs"),
+    subtitle = "SPAs in dark sage. Terminal Tower in center of downtown in red."
   )
 
 girafe(ggobj = p)
 ```
 
 # Census Data
-
-I don't want to abuse the US Census Bureau API, so I'll set a flag to only download data as I'm developing this script. Once I have what I want, I'll keep my data on my local drive and build my report.
-
-```{r}
-#| code-fold: false
-
-USE_API <- FALSE
-```
 
 The Census Bureau API allows you to select multiple variables from a single census file. There are a few files for each census, and the variable names change. I want the Cleveland area population in 2000, 2010, 2020, and the American Community Survey (ACS) 1-year estimate from 2023 (most recent). So despite the handiness of **tidycensus** package, data collection is still going to be a bit tedious.
 
@@ -211,7 +208,7 @@ pl_2020_vars <-
   )
 ```
 
-Here they are after a bit of cleaning.
+Here they are after a bit of cleaning. I created `var_level` to group several infrequent values into "Other".
 
 ```{r}
 #| code-fold: true
@@ -219,24 +216,24 @@ Here they are after a bit of cleaning.
 pl_2020_vars <- 
   pl_2020_vars |>
   mutate(
-    label = case_when(
+    var_detail = case_when(
       str_detect(label, "White") ~ "White",
       str_detect(label, "Black") ~ "Black",
       str_detect(label, "Asian") ~ "Asian",
       str_detect(label, "American Indian") ~ "American Indian",
       str_detect(label, "Native Hawaiian") ~ "Pacific Islander",
-      str_detect(label, "Some Other Race") ~ "Other",
+      str_detect(label, "Some Other Race") ~ "Some Other Race",
       str_detect(label, "two or more races") ~ "Two or more races",
       str_detect(label, "Hispanic") ~ "Hispanic",
       str_detect(label, "Total") ~ "Total",
       TRUE ~ label
     ),
-    rpt_group = if_else(name == "P2_001N", "Total", "Race/ethnicity"),
-    rpt_level = if_else(
-      label %in% c("White", "Black", "Hispanic", "Asian", "Total"),
-      label, "Other")
+    var_group = if_else(name == "P2_001N", "Total", "Race/ethnicity"),
+    var_level = if_else(
+      var_detail %in% c("White", "Black", "Hispanic", "Asian", "Total"),
+      var_detail, "Other")
   ) |>
-  select(variable = name, label, rpt_group, rpt_level)
+  select(variable = name, var_group, var_level, var_detail)
 
 pl_2020_vars
 ```
@@ -263,10 +260,10 @@ I'll ignore sex and aggregate the ages into ten-year buckets.
 dp_2020_vars <- 
   dp_2020_vars |>
   mutate(
-    label = str_remove_all(label, "(Count!!SEX AND AGE!!Total population)|(!!)"),
-    label = if_else(label == "", "Total", label),
-    rpt_group = "Age",
-    rpt_level = case_when(
+    var_detail = str_remove_all(label, "(Count!!SEX AND AGE!!Total population)|(!!)"),
+    var_detail = if_else(var_detail == "", "Total", var_detail),
+    var_group = "Age",
+    var_level = case_when(
       name <= "DP1_0004C" ~ "Under 15 yrs",
       name <= "DP1_0006C" ~ "15 to 24 yrs",
       name <= "DP1_0008C" ~ "25 to 34 yrs",
@@ -276,7 +273,7 @@ dp_2020_vars <-
       TRUE ~ "65+ yrs"
     )
   ) |>
-  select(variable = name, label, rpt_group, rpt_level)
+  select(variable = name, var_group, var_level, var_detail)
 
 dp_2020_vars
 ```
@@ -288,29 +285,25 @@ With the variables identified, request the data from the API. Cleveland is one o
 #| results: hide
 
 # Utility function to create factors
-my_rpt_relevel <- function(x) {
+var_relevel <- function(x) {
+  race_levels = c("Black", "White", "Hispanic", "Asian", "Other", "Total")
   ethn <- c("Black", "White", "Hispanic", "Asian", "Other", "Total")
-  x <- fct_relevel(x, ethn, after = Inf)
+  x <- fct_relevel(x, race_levels, after = Inf)
   x <- fct_relevel(x, "Under 15 yrs", after = 0)
   return(x)
 }
 
-# Urban Partners defn of Westside, uses tracts. The block-level data
-# includes the tract number.
+# Urban Partners definitions of greater Cleveland uses tracts and blocks.
 westside_tracts_2020 <- c(
   "103100", "103400", "103500", "103602", "103800", "103900", "104100", 
   "104200", "104300", "197800", "197700", "197500", "104400"
 )
-
-# Urban Partners defn of Downtown Core, uses tracts and blocks
-downtown_core_tracts_2020 <- c(
-  "103300", "107101", "107701", "107802", "109301")
-downtown_core_blocks_2020 <- paste0(
-  "39035108701", c("2001", "2004", "2006", "2008"))
+downtown_core_tracts_2020 <- c("103300", "107101", "107701", "107802", "109301")
+downtown_core_blocks_2020 <- paste0("39035108701", c("2001", "2004", "2006", "2008"))
 
 if (USE_API) {
 
-  subdiv_2020_pl <- 
+  subdiv_2020_pl_detail <- 
     get_decennial( 
       geography = "county subdivision",
       sumfile = "pl",
@@ -320,13 +313,9 @@ if (USE_API) {
       geometry = TRUE, 
       year = 2020
     ) |> 
-    inner_join(pl_2020_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    )
+    inner_join(pl_2020_vars, by = "variable")
   
-  subdiv_2020_dp <- 
+  subdiv_2020_dp_detail <- 
     get_decennial( 
       geography = "county subdivision",
       sumfile = "dp",
@@ -336,45 +325,9 @@ if (USE_API) {
       geometry = TRUE, 
       year = 2020
     ) |> 
-    inner_join(dp_2020_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    )
+    inner_join(dp_2020_vars, by = "variable")
   
-  # tract_2020_pl <- 
-  #   get_decennial( 
-  #     geography = "tract",
-  #     sumfile = "pl",
-  #     variables = pl_2020_vars$variable,
-  #     state = "OH",
-  #     county = "Cuyahoga",
-  #     geometry = TRUE, 
-  #     year = 2020
-  #   ) |> 
-  #   inner_join(pl_2020_vars, by = "variable") |>
-  #   summarize(
-  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-  #     value = sum(value)
-  #   )
-  # 
-  # tract_2020_dp <- 
-  #   get_decennial( 
-  #     geography = "tract",
-  #     sumfile = "dp",
-  #     variables = dp_2020_vars$variable,
-  #     state = "OH",
-  #     county = "Cuyahoga",
-  #     geometry = TRUE, 
-  #     year = 2020
-  #   ) |>
-  #   inner_join(dp_2020_vars, by = "variable") |>
-  #   summarize(
-  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-  #     value = sum(value)
-  #   )
-  
-  block_2020_pl <- 
+  block_2020_pl_detail <- 
     get_decennial( 
       geography = "block",
       sumfile = "pl",
@@ -384,37 +337,45 @@ if (USE_API) {
       geometry = TRUE, 
       year = 2020
     ) |> 
-    inner_join(pl_2020_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    )
+    inner_join(pl_2020_vars, by = "variable")
   
   # dp is not available at the block level
+  # block_2020_dp_detail <- 
+  #   get_decennial( 
+  #     geography = "block",
+  #     sumfile = "dp",
+  #     variables = dp_2020_vars$variable,
+  #     state = "OH",
+  #     county = "Cuyahoga",
+  #     geometry = TRUE, 
+  #     year = 2020
+  #   ) |> 
+  #   inner_join(dp_2020_vars, by = "variable")
 
-  subdiv_2020 <- 
-    bind_rows(subdiv_2020_pl, subdiv_2020_dp) |>
+  # The "_detail" objects include the original levels for race/ethnicity and age.
+   
+  subdiv_2020_detail <- 
+    bind_rows(subdiv_2020_pl_detail, subdiv_2020_dp_detail) |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       NAME = str_remove_all(NAME, "(, Cuyahoga County, Ohio)|(village)|(city)"),
       NAME = str_trim(NAME)
-    )
+    ) |>
+    select(-variable) |>
+    rename(geo_name = NAME) |>
+    relocate(value, .after = var_detail)
            
-  tract_2020 <-
-    bind_rows(tract_2020_pl, tract_2020_dp) |>
-    mutate(rpt_level = my_rpt_relevel(rpt_level))
-  
-  block_2020 <-
-    block_2020_pl |>
+  block_2020_detail <-
+    block_2020_pl_detail |>
     inner_join(
       cleve_blocks |> as_tibble() |> select(GEOID20, SPA = SPA_NAME), 
       by = c("GEOID" = "GEOID20")
     ) |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       greater_downtown = case_when(
         str_sub(GEOID, 6, 11) %in% westside_tracts_2020 ~ "Westside",
-        str_sub(GEOID, 6, 11) %in% downtown_core_tracts ~ "Downtown Core",
+        str_sub(GEOID, 6, 11) %in% downtown_core_tracts_2020 ~ "Downtown Core",
         GEOID %in% downtown_core_blocks_2020 ~ "Downtown Core",
         TRUE ~ "Other"
       ),
@@ -422,9 +383,31 @@ if (USE_API) {
       SPA = fct_relevel(SPA, "Downtown", after = 0),
       greater_downtown = factor(
         greater_downtown, levels = c("Downtown Core", "Westside", "Other"))
+    ) |>
+    select(-variable) |>
+    rename(geo_name = NAME) |>
+    relocate(value, .after = var_detail)
+
+  # The non-_detail objects summarize by my grouped race/ethnicity and age.
+  
+  subdiv_2020 <- 
+    subdiv_2020_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, geometry, var_group, var_level),
+      value = sum(value)
     )
   
-  save(subdiv_2020, block_2020, file = "decennial_2020.Rdata")
+  block_2020 <- 
+    block_2020_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, geometry, var_group, var_level, SPA, greater_downtown),
+      value = sum(value)
+    )
+  
+  save(
+    subdiv_2020_detail, block_2020_detail, subdiv_2020, block_2020, 
+    file = "decennial_2020.Rdata"
+  )
 
 } else {
   
@@ -448,8 +431,8 @@ total_pop_table <- function(subdiv_yyyy, block_yyyy, yyyy) {
   by_subdiv <- 
     subdiv_yyyy |> 
     as_tibble() |>
-    filter(rpt_level == "Total", value > 0) |>
-    mutate(subgrp = if_else(NAME == "Cleveland", NAME, "Other")) |>
+    filter(var_level == "Total", value > 0) |>
+    mutate(subgrp = if_else(geo_name == "Cleveland", geo_name, "Other")) |>
     summarize(.by = subgrp, pop = sum(value)) |>
     arrange(subgrp) |>
     janitor::adorn_totals()
@@ -457,7 +440,7 @@ total_pop_table <- function(subdiv_yyyy, block_yyyy, yyyy) {
   by_spa <-
     block_yyyy |>
     as_tibble() |>
-    filter(rpt_level == "Total") |>
+    filter(var_level == "Total") |>
     summarize(.by = SPA, pop = sum(value)) |>
     arrange(SPA) |>
     rename(subgrp = SPA) |>
@@ -466,7 +449,7 @@ total_pop_table <- function(subdiv_yyyy, block_yyyy, yyyy) {
   by_grtr <-
     block_yyyy |>
     as_tibble() |>
-    filter(rpt_level == "Total") |>
+    filter(var_level == "Total") |>
     summarize(.by = greater_downtown, pop = sum(value)) |>
     arrange(greater_downtown) |>
     rename(subgrp = greater_downtown) |>
@@ -490,7 +473,7 @@ total_pop_table <- function(subdiv_yyyy, block_yyyy, yyyy) {
     ) |>
     gt::tab_style(
       style = cell_fill(color = "honeydew2"),
-      locations = cells_group()
+      locations = cells_row_groups()
     ) |>
     gt::tab_style(
       style = cell_text(weight = "bold"),
@@ -503,12 +486,12 @@ total_pop_plot <- function(subdiv_yyyy, block_yyyy, yyyy) {
   
   subdiv_yyyy_total <- 
     subdiv_yyyy |>
-    filter(rpt_group == "Total") |>
-    mutate(tt = glue("{NAME}\n{comma(value)}"))
+    filter(var_group == "Total") |>
+    mutate(tt = glue("{geo_name}\n{comma(value)}"))
   
   block_yyyy_total <- 
     block_yyyy |> 
-    filter(rpt_group == "Total") |>
+    filter(var_group == "Total") |>
     as_tibble() |>
     select(SPA, value)
 
@@ -520,41 +503,31 @@ total_pop_plot <- function(subdiv_yyyy, block_yyyy, yyyy) {
     mutate(tt = glue("{SPA}\n{comma(value)}"))
 
   p <-
-  ggplot() +
-  geom_sf(data = oh_state, color = "gray60") +
-  geom_sf_interactive(
-    data = oh_counties, 
-    aes(tooltip = NAME),
-    fill = "honeydew", color = "gray90"
-  ) +
-  geom_sf_interactive(
-    data = subdiv_yyyy_total, 
-    aes(tooltip = tt), 
-    fill = "honeydew2", color = "honeydew3"
-  ) +
-  geom_sf_interactive(
-    data = neigh_yyyy_total |> filter(SPA != "Downtown"), 
-    aes(tooltip = tt),
-    fill = "darkseagreen"
-  ) + coord_sf(xlim = c(-82.0, -81.3), ylim = c(41.25, 41.65)) +
-  geom_sf_interactive(
-    data = neigh_yyyy_total |> filter(SPA == "Downtown"), 
-    aes(tooltip = tt),
-    fill = "darkseagreen1"
-  ) +
-  coord_sf(xlim = c(-82.0, -81.3), ylim = c(41.25, 41.65)) +
-  theme(
-    panel.background = element_rect(fill = "skyblue"),
-    panel.grid = element_blank(),
-    axis.text = element_blank()
-  ) +
-  labs(
-    title = glue("Cuyahoga County Population, {yyyy}"),
-    subtitle = glue(
-      "Cuyahoga County Subdivisions (sage) and Cleveland SPAs (green).")
-  )
+    ggplot() +
+    geom_sf_interactive(data = oh_counties, 
+                        aes(tooltip = paste(NAME, "County")), 
+                        fill = "honeydew", color = "honeydew3") +
+    geom_sf_interactive(data = oh_places, 
+                        aes(tooltip = NAME), fill = "honeydew3", color = "honeydew") +
+    geom_sf(data = oh_counties |> filter(NAME == "Cuyahoga"), 
+            fill = NA, color = "honeydew4", linewidth = 1) +
+    geom_sf_interactive(data = subdiv_yyyy_total,
+                        aes(tooltip = tt),
+                        fill = "honeydew3", color = "honeydew") +
+    geom_sf_interactive(data = neigh_yyyy_total, #|> filter(SPA != "Downtown"),
+                        aes(tooltip = tt, fill = value),
+                        color = "honeydew4", show.legend = FALSE) +
+    scale_x_continuous(limits = c(-82.0, -81.3)) +
+    scale_y_continuous(limits = c(41.25, 41.65)) +
+    scale_fill_gradient(low = "lightgoldenrod", high = "goldenrod") +
+    theme(
+      panel.background = element_rect(fill = "skyblue"),
+      panel.grid = element_blank(),
+      axis.text = element_blank()
+    ) +
+    labs(title = glue("Cleveland Popululation by SPA, {yyyy}"))
 
-girafe(ggobj = p)
+  girafe(ggobj = p)
 
 }
 ```
@@ -596,7 +569,7 @@ sf1_2010_vars <-
   )
 ```
 
-I'll prepare the variables the same way as with 2020.
+I'll prepare the variables the same way as with 2020. There are twice as many age variables this time because there is one variable for each sex.
 
 ```{r}
 #| code-fold: true
@@ -605,7 +578,8 @@ sf1_2010_vars <-
   sf1_2010_vars |>
   mutate(
     label = str_remove(label, "(Total!!Male!!)|(Total!!Female!!)"),
-    label = case_when(
+    label = str_remove(label, "(Total!!Not Hispanic or Latino!!)"),
+    var_detail = case_when(
       str_detect(label, "White") ~ "White",
       str_detect(label, "Black") ~ "Black",
       str_detect(label, "Asian") ~ "Asian",
@@ -617,24 +591,24 @@ sf1_2010_vars <-
       str_detect(label, "Total") ~ "Total",
       TRUE ~ label,
     ),
-    rpt_group = case_when(
+    var_group = case_when(
       name == "P005001" ~ "Total",
       between(name, "P005003", "P005010") ~ "Race/ethnicity",
       TRUE ~ "Age"
     ),
-    rpt_level = case_when(
-      label %in% c("White", "Black", "Hispanic", "Asian", "Total", "Other") ~ label,
-      label %in% c("American Indian", "Pacific Islander", "Two or more races") ~ "Other",
-      label %in% c("Under 5 years", "5 to 9 years", "10 to 14 years") ~ "Under 15 yrs",
-      between(label, "15 to 17 years", "22 to 24 years") ~ "15 to 24 yrs",
-      label %in% c("25 to 29 years", "30 to 34 years") ~ "25 to 34 yrs",
-      label %in% c("35 to 39 years", "40 to 44 years") ~ "35 to 44 yrs",
-      label %in% c("45 to 49 years", "50 to 54 years") ~ "45 to 54 yrs",
-      between(label, "55 to 59 years", "62 to 64 years") ~ "55 to 64 yrs",
-      between(label, "65 and 66 years", "85 years and over") ~ "65+ yrs"
+    var_level = case_when(
+      var_detail %in% c("White", "Black", "Hispanic", "Asian", "Total", "Other") ~ var_detail,
+      var_detail %in% c("American Indian", "Pacific Islander", "Two or more races") ~ "Other",
+      var_detail %in% c("Under 5 years", "5 to 9 years", "10 to 14 years") ~ "Under 15 yrs",
+      between(var_detail, "15 to 17 years", "22 to 24 years") ~ "15 to 24 yrs",
+      var_detail %in% c("25 to 29 years", "30 to 34 years") ~ "25 to 34 yrs",
+      var_detail %in% c("35 to 39 years", "40 to 44 years") ~ "35 to 44 yrs",
+      var_detail %in% c("45 to 49 years", "50 to 54 years") ~ "45 to 54 yrs",
+      between(var_detail, "55 to 59 years", "62 to 64 years") ~ "55 to 64 yrs",
+      between(var_detail, "65 and 66 years", "85 years and over") ~ "65+ yrs"
     )
   ) |>
-  select(variable = name, label, rpt_group, rpt_level)
+  select(variable = name, var_group, var_level, var_detail)
 
 sf1_2010_vars
 ```
@@ -645,17 +619,14 @@ Request the data from the API. This time I cannot join to `cleve_blocks` to get 
 #| code-fold: true
 #| results: hide
 
-# Tract definition are same for 2010.
+# Urban Partners definitions of greater Cleveland uses tracts and blocks.
 westside_tracts_2010 <- westside_tracts_2020
-
-downtown_core_tracts_2010 <- c(
-  "103300", "107101", "107701", "107802", "109301")
-downtown_core_blocks_2010 <- 
-  paste0("39035108701", c("3000", "3001", "3002", "3003", "3004"))
+downtown_core_tracts_2010 <- downtown_core_tracts_2020
+downtown_core_blocks_2010 <- paste0("39035108701", c("3000", "3001", "3002", "3003", "3004"))
 
 if (USE_API) {
 
-  subdiv_2010 <- 
+  subdiv_2010_detail_0 <- 
     get_decennial( 
       geography = "county subdivision",
       sumfile = "sf1",
@@ -665,35 +636,24 @@ if (USE_API) {
       geometry = TRUE, 
       year = 2010
     ) |> 
-    inner_join(sf1_2010_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    ) |>
+    inner_join(sf1_2010_vars, by = "variable")
+
+  subdiv_2010_detail_1 <- 
+    subdiv_2010_detail_0 |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       NAME = str_remove_all(NAME, "(, Cuyahoga County, Ohio)|(village)|(city)"),
       NAME = str_trim(NAME)
-    )
+    ) |>
+    rename(geo_name = NAME)
   
-  # tract_2010 <- 
-  #   get_decennial( 
-  #     geography = "tract",
-  #     sumfile = "sf1",
-  #     variables = sf1_2010_vars$variable,
-  #     state = "OH",
-  #     county = "Cuyahoga",
-  #     geometry = TRUE, 
-  #     year = 2010
-  #   ) |> 
-  #   inner_join(sf1_2010_vars, by = "variable") |>
-  #   summarize(
-  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-  #     value = sum(value)
-  #   ) |>
-  #   mutate(rpt_level = my_rpt_relevel(rpt_level))
-
-  block_2010_0 <- 
+  # Sum the two rows (for each sex)
+  subdiv_2010_detail <-
+    subdiv_2010_detail_1 |> 
+    select(-variable) |>
+    summarize(.by = -c(value), value = sum(value))
+           
+  block_2010_detail_0 <- 
     get_decennial( 
       geography = "block",
       sumfile = "sf1",
@@ -703,17 +663,12 @@ if (USE_API) {
       geometry = TRUE, 
       year = 2010
     ) |> 
-    inner_join(sf1_2010_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    ) |>
-    mutate(rpt_level = my_rpt_relevel(rpt_level))
+    inner_join(sf1_2010_vars, by = "variable")
 
-  block_2010 <-
-    st_join(cleve_neigh, st_centroid(block_2010_0), join = st_contains) |>
+  block_2010_detail_1 <-
+    st_join(cleve_neigh, st_centroid(block_2010_detail_0), join = st_contains) |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       greater_downtown = case_when(
         str_sub(GEOID, 6, 11) %in% westside_tracts_2010 ~ "Westside",
         str_sub(GEOID, 6, 11) %in% downtown_core_tracts_2010 ~ "Downtown Core",
@@ -725,9 +680,32 @@ if (USE_API) {
       greater_downtown = factor(
         greater_downtown, levels = c("Downtown Core", "Westside", "Other"))
     ) |>
-    select(GEOID, NAME, geometry, rpt_group, rpt_level, value, SPA, greater_downtown)
+    select(GEOID, geo_name = NAME, geometry, var_group, var_level, var_detail, 
+           value, SPA, greater_downtown)
+
+  # Sum the two rows (for each sex)
+  block_2010_detail <-
+    block_2010_detail_1 |> 
+    summarize(.by = -c(value), value = sum(value))
   
-  save(subdiv_2010, block_2010, file = "decennial_2010.Rdata")
+  subdiv_2010 <- 
+    subdiv_2010_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, geometry, var_group, var_level),
+      value = sum(value)
+    )
+  
+  block_2010 <- 
+    block_2010_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, geometry, var_group, var_level, SPA, greater_downtown),
+      value = sum(value)
+    )
+  
+  save(
+    subdiv_2010_detail, block_2010_detail, subdiv_2010, block_2010, 
+    file = "decennial_2010.Rdata"
+  )
 
 } else {
   
@@ -785,38 +763,39 @@ sf1_2000_vars <-
   sf1_2000_vars |>
   mutate(
     label = str_remove(label, "(Total!!Male!!)|(Total!!Female!!)"),
-    label = case_when(
+    label = str_remove(label, "(Total!!Not Hispanic or Latino!!)"),
+    var_detail = case_when(
       str_detect(label, "White") ~ "White",
       str_detect(label, "Black") ~ "Black",
       str_detect(label, "Asian") ~ "Asian",
       str_detect(label, "American Indian") ~ "American Indian",
       str_detect(label, "Native Hawaiian") ~ "Pacific Islander",
-      str_detect(label, "Some Other Race") ~ "Other",
-      str_detect(label, "Two or More Races") ~ "Two or more races",
+      str_detect(label, "Some other race") ~ "Other",
+      str_detect(label, "two or more races") ~ "Two or more races",
       str_detect(label, "Hispanic") ~ "Hispanic",
       str_detect(label, "Total") ~ "Total",
       TRUE ~ label,
     ),
-    rpt_group = case_when(
+    var_group = case_when(
       name == "P004001" ~ "Total",
       between(name, "P004002", "P004011") ~ "Race/ethnicity",
       TRUE ~ "Age"
     ),
-    rpt_level = case_when(
-      label %in% c("White", "Black", "Hispanic", "Asian", "Total", "Other") ~ label,
-      label %in% c("American Indian", "Pacific Islander", "Two or more races") ~ "Other",
-      label %in% c("Under 5 years", "5 to 9 years", "10 to 14 years") ~ "Under 15 yrs",
-      between(label, "15 to 17 years", "22 to 24 years") ~ "15 to 24 yrs",
-      label %in% c("25 to 29 years", "30 to 34 years") ~ "25 to 34 yrs",
-      label %in% c("35 to 39 years", "40 to 44 years") ~ "35 to 44 yrs",
-      label %in% c("45 to 49 years", "50 to 54 years") ~ "45 to 54 yrs",
-      between(label, "55 to 59 years", "62 to 64 years") ~ "55 to 64 yrs",
-      between(label, "65 and 66 years", "85 years and over") ~ "65+ yrs"
+    var_level = case_when(
+      var_detail %in% c("White", "Black", "Hispanic", "Asian", "Total", "Other") ~ var_detail,
+      var_detail %in% c("American Indian", "Pacific Islander", "Two or more races") ~ "Other",
+      var_detail %in% c("Under 5 years", "5 to 9 years", "10 to 14 years") ~ "Under 15 yrs",
+      between(var_detail, "15 to 17 years", "22 to 24 years") ~ "15 to 24 yrs",
+      var_detail %in% c("25 to 29 years", "30 to 34 years") ~ "25 to 34 yrs",
+      var_detail %in% c("35 to 39 years", "40 to 44 years") ~ "35 to 44 yrs",
+      var_detail %in% c("45 to 49 years", "50 to 54 years") ~ "45 to 54 yrs",
+      between(var_detail, "55 to 59 years", "62 to 64 years") ~ "55 to 64 yrs",
+      between(var_detail, "65 and 66 years", "85 years and over") ~ "65+ yrs"
     )
   ) |>
-  select(variable = name, label, rpt_group, rpt_level)
+  select(variable = name, var_group, var_level, var_detail)
 
-sf1_2010_vars
+sf1_2000_vars
 ```
 
 Request the data from the API. I'll used the `cleve_neigh` shape file again to identify the SPAs. Tract and block identifiers can change from census to census, so I had to make some changes to the *Downtown Core* definition. I used the same block identifiers for Urban Partners' definitions, but they did not include 2020 in their report, so I'm not sure how much this differs.
@@ -837,7 +816,7 @@ downtown_core_blocks_2000 <-
 
 if (USE_API) {
 
-  subdiv_2000_0 <- 
+  subdiv_2000_detail_0 <- 
     get_decennial( 
       geography = "county subdivision",
       sumfile = "sf1",
@@ -847,47 +826,37 @@ if (USE_API) {
       geometry = FALSE, # no county subdivision geography in 2000
       year = 2000
     ) |> 
-    inner_join(sf1_2000_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, rpt_group, rpt_level),
-      value = sum(value)
-    ) |>
+    inner_join(sf1_2000_vars, by = "variable") 
+  
+  subdiv_2000_detail_1 <- 
+    subdiv_2000_detail_0 |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       NAME = str_remove_all(NAME, "(, Cuyahoga County, Ohio)|(village)|(city)"),
       NAME = str_trim(NAME)
-    )
-  
-  # No geometry for 2000? No problem? I'll use the 2010 geometry and replace the 
-  # values with 2000.
-  subdiv_2000_1 <- 
-    subdiv_2000_0 |> 
-    as_tibble() |> 
-    select(GEOID, rpt_group, rpt_level, value)
-  
-  subdiv_2000 <- 
-    subdiv_2010 |>
-    select(-value) |>
-    inner_join(subdiv_2000_1, by = c("GEOID", "rpt_group", "rpt_level"))
-  
-  # tract_2000 <- 
-  #   get_decennial( 
-  #     geography = "tract",
-  #     sumfile = "sf1",
-  #     variables = sf1_2000_vars$variable,
-  #     state = "OH",
-  #     county = "Cuyahoga",
-  #     geometry = TRUE, 
-  #     year = 2000
-  #   ) |> 
-  #   inner_join(sf1_2000_vars, by = "variable") |>
-  #   summarize(
-  #     .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-  #     value = sum(value)
-  #   ) |>
-  #   mutate(rpt_level = my_rpt_relevel(rpt_level))
+    ) |>
+    rename(geo_name = NAME)
 
-  block_2000_0 <- 
+  # Sum the two rows (for each sex)
+  subdiv_2000_detail_2 <-
+    subdiv_2000_detail_1 |> 
+    select(-variable) |>
+    summarize(.by = -c(value), value = sum(value))
+           
+  # No geometry for 2000? No problem! Use the 2010 geometry and replace the 
+  # values with 2000.
+  subdiv_2000_detail_3 <- 
+    subdiv_2000_detail_2 |> 
+    as_tibble() |> 
+    select(GEOID, var_group, var_level, var_detail, value)
+  
+  subdiv_2000_detail <- 
+    subdiv_2010_detail |>
+    select(-value) |>
+    inner_join(subdiv_2000_detail_3, 
+               by = c("GEOID", "var_group", "var_level", "var_detail"))
+
+  block_2000_detail_0 <- 
     get_decennial( 
       geography = "block",
       sumfile = "sf1",
@@ -897,17 +866,12 @@ if (USE_API) {
       geometry = TRUE, 
       year = 2000
     ) |> 
-    inner_join(sf1_2000_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, geometry, rpt_group, rpt_level),
-      value = sum(value)
-    ) |>
-    mutate(rpt_level = my_rpt_relevel(rpt_level))
-
-  block_2000 <-
-    st_join(cleve_neigh, st_centroid(block_2000_0), join = st_contains) |>
+    inner_join(sf1_2000_vars, by = "variable")
+  
+  block_2000_detail_1 <-
+    st_join(cleve_neigh, st_centroid(block_2000_detail_0), join = st_contains) |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       greater_downtown = case_when(
         str_sub(GEOID, 6, 11) %in% westside_tracts_2000 ~ "Westside",
         str_sub(GEOID, 6, 11) %in% downtown_core_tracts_2000 ~ "Downtown Core",
@@ -919,9 +883,32 @@ if (USE_API) {
       greater_downtown = factor(
         greater_downtown, levels = c("Downtown Core", "Westside", "Other"))
     ) |>
-    select(GEOID, NAME, geometry, rpt_group, rpt_level, value, SPA, greater_downtown)
+    select(GEOID, geo_name = NAME, geometry, var_group, var_level, var_detail, 
+           value, SPA, greater_downtown)
   
-  save(subdiv_2000, block_2000, file = "decennial_2000.Rdata")
+  # Sum the two rows (for each sex)
+  block_2000_detail <-
+    block_2000_detail_1 |> 
+    summarize(.by = -c(value), value = sum(value))
+  
+  subdiv_2000 <- 
+    subdiv_2000_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, geometry, var_group, var_level),
+      value = sum(value)
+    )
+  
+  block_2000 <- 
+    block_2000_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, geometry, var_group, var_level, SPA, greater_downtown),
+      value = sum(value)
+    )
+  
+  save(
+    subdiv_2000_detail, block_2000_detail, subdiv_2000, block_2000, 
+    file = "decennial_2000.Rdata"
+  )
 
 } else {
   
@@ -987,12 +974,12 @@ acs1_2023_vars <-
       str_detect(label, "Total") ~ "Total",
       TRUE ~ label,
     ),
-    rpt_group = case_when(
+    var_group = case_when(
       name == "B01001_001" ~ "Total",
       between(name, "B03002_003", "B03002_012") ~ "Race/ethnicity",
       TRUE ~ "Age"
     ),
-    rpt_level = case_when(
+    var_level = case_when(
       label %in% c("White", "Black", "Hispanic", "Asian", "Total", "Other") ~ label,
       label %in% c("American Indian", "Pacific Islander", "Two or more races") ~ "Other",
       label %in% c("Under 5 years", "5 to 9 years", "10 to 14 years") ~ "Under 15 yrs",
@@ -1004,7 +991,7 @@ acs1_2023_vars <-
       between(label, "65 and 66 years", "85 years and over") ~ "65+ yrs"
     )
   ) |>
-  select(variable = name, label, rpt_group, rpt_level)
+  select(variable = name, label, var_group, var_level)
 
 acs1_2023_vars
 ```
@@ -1017,7 +1004,7 @@ Request the data from the API.
 
 if (USE_API) {
 
-  subdiv_2023 <- 
+  subdiv_2023_detail_0 <- 
     get_acs( 
       geography = "county subdivision",
       sumfile = "acs1",
@@ -1027,35 +1014,31 @@ if (USE_API) {
       geometry = FALSE, # no geo file for ACS-1yr
       year = 2023
     ) |> 
-    inner_join(acs1_2023_vars, by = "variable") |>
-    summarize(
-      .by = c(GEOID, NAME, rpt_group, rpt_level),
-      value = sum(estimate)
-    ) |>
+    inner_join(acs1_2023_vars, by = "variable")
+  
+  subdiv_2023_detail_1 <- 
+    subdiv_2023_detail_0 |>
     mutate(
-      rpt_level = my_rpt_relevel(rpt_level),
+      var_level = var_relevel(var_level),
       NAME = str_remove_all(NAME, "(, Cuyahoga County, Ohio)|(village)|(city)"),
       NAME = str_trim(NAME)
+    ) |>
+    rename(geo_name = NAME)
+
+  # Sum the two rows (for each sex)
+  subdiv_2023_detail <-
+    subdiv_2023_detail_1 |> 
+    select(-variable) |>
+    summarize(.by = -c(estimate), value = sum(estimate))
+
+  subdiv_2023 <- 
+    subdiv_2023_detail |>
+    summarize(
+      .by = c(GEOID, geo_name, var_group, var_level),
+      value = sum(value)
     )
   
-  # tract_2023 <- 
-  #   get_acs( 
-  #     geography = "tract",
-  #     sumfile = "acs1",
-  #     variables = acs1_2023_vars$variable,
-  #     state = "OH",
-  #     county = "Cuyahoga",
-  #     geometry = FALSE, 
-  #     year = 2023
-  #   ) |> 
-  #   inner_join(acs1_2023_vars, by = "variable") |>
-  #   summarize(
-  #     .by = c(GEOID, NAME, rpt_group, rpt_level),
-  #     value = sum(estimate)
-  #   ) |>
-  #   mutate(rpt_level = my_rpt_relevel(rpt_level))
-
-  save(subdiv_2023, file = "acs1yr_2023.Rdata")
+  save(subdiv_2023_detail, subdiv_2023, file = "acs1yr_2023.Rdata")
 
 } else {
   
@@ -1071,8 +1054,8 @@ Cleveland's population has continued to decline, down to 367,523 from 372,624 in
 
 subdiv_2023 |>
   as_tibble() |>
-  filter(rpt_level == "Total", value > 0) |>
-  mutate(subgrp = if_else(NAME == "Cleveland", NAME, "Other")) |>
+  filter(var_level == "Total", value > 0) |>
+  mutate(subgrp = if_else(geo_name == "Cleveland", geo_name, "Other")) |>
   summarize(.by = subgrp, pop = sum(value)) |>
   arrange(subgrp) |>
   janitor::adorn_totals() |>
@@ -1101,28 +1084,26 @@ Cleveland lost 17% of its population between 2000 and 2010. The population loss 
 
 subdiv_long <- bind_rows(
   `2000` = subdiv_2000 |> as_tibble() |>
-    summarize(.by = c(NAME, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(geo_name, var_group, var_level), value = sum(value)),
   `2010` = subdiv_2010 |> as_tibble() |>
-    summarize(.by = c(NAME, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(geo_name, var_group, var_level), value = sum(value)),
   `2020` = subdiv_2020 |> as_tibble() |>
-    summarize(.by = c(NAME, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(geo_name, var_group, var_level), value = sum(value)),
   `2023` = subdiv_2023 |> as_tibble() |>
-    summarize(.by = c(NAME, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(geo_name, var_group, var_level), value = sum(value)),
   .id = "yr"
-) |>
-  rename(SPANM = NAME)
+)
 
 subdiv_wide_0 <-
   subdiv_long |>
-  rename(pop = value, SPA = SPANM) |>
-  mutate(.by = c(yr, SPA, rpt_group), grp = pop / sum(pop)) |>
+  rename(pop = value) |>
+  mutate(.by = c(yr, geo_name, var_group), grp = pop / sum(pop)) |>
   pivot_wider(names_from = yr, values_from = c(pop, grp))
 
 subdiv_wide <-
   subdiv_2010 |>
-  rename(SPA = NAME) |>
   select(-value) |>
-  inner_join(subdiv_wide_0, by = c("SPA", "rpt_group", "rpt_level")) |>
+  inner_join(subdiv_wide_0, by = c("geo_name", "var_group", "var_level")) |>
   mutate(
     d10 = pop_2010 - pop_2000,
     p10 = d10 / pop_2000,
@@ -1131,7 +1112,7 @@ subdiv_wide <-
     d23 = pop_2023 - pop_2020,
     p23 = d23 / pop_2020,
     tt = glue(
-      "{rpt_level} in {SPA}\n\n",
+      "{var_level} in {geo_name}\n\n",
       "2010: {comma(pop_2010)}\n",
       "2020: {comma(pop_2020)}, {if_else(p20>0,'+','')}{percent(p20, 1)}\n",
       "2023: {comma(pop_2023)}, {if_else(p23>0,'+','')}{percent(p23, 1)}\n",
@@ -1142,18 +1123,18 @@ subdiv_wide <-
 
 neigh_long <- bind_rows(
   `2000` = block_2000 |> as_tibble() |> 
-    summarize(.by = c(SPA, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(SPA, var_group, var_level), value = sum(value)),
   `2010` = block_2010 |> as_tibble() |> 
-    summarize(.by = c(SPA, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(SPA, var_group, var_level), value = sum(value)),
   `2020` = block_2020 |> as_tibble() |> 
-    summarize(.by = c(SPA, rpt_group, rpt_level), value = sum(value)),
+    summarize(.by = c(SPA, var_group, var_level), value = sum(value)),
   .id = "yr"
 )
 
 neigh_wide_0 <-
   neigh_long |>
   rename(pop = value) |>
-  mutate(.by = c(yr, SPA, rpt_group), grp = pop / sum(pop)) |>
+  mutate(.by = c(yr, SPA, var_group), grp = pop / sum(pop)) |>
   pivot_wider(names_from = yr, values_from = c(pop, grp))
 
 neigh_wide <-
@@ -1165,17 +1146,17 @@ neigh_wide <-
     d20 = pop_2020 - pop_2010,
     p20 = d20 / pop_2010,
     tt = glue(
-      "{SPA}\n{rpt_level} Population\n\n",
+      "{SPA}\n{var_level} Population\n\n",
       "2000: {comma(pop_2000)}\n",
       "2010: {comma(pop_2010)}, {if_else(p10>0,'+','')}{percent(p10, 1)}\n",
       "2020: {comma(pop_2020)}, {if_else(p20>0,'+','')}{percent(p20, 1)}\n"
     )
   ) 
 
-plot_neigh <- function(.rpt_group, .rpt_level, fill_var, yrs) {
+plot_neigh <- function(.var_group, .var_level, fill_var, yrs) {
   p <-
     neigh_wide |>
-    filter(rpt_group == .rpt_group, rpt_level == .rpt_level) |>
+    filter(var_group == .var_group, var_level == .var_level) |>
     ggplot() +
     geom_sf(data = oh_state, color = "gray60") +
     geom_sf_interactive(
@@ -1223,12 +1204,12 @@ plot_neigh("Total", "Total", p20, "2010 - 2020")
 #| code-fold: true
 #| echo: false
 
-neigh_gt <- function(.rpt_group, .rpt_level) {
+neigh_gt <- function(.var_group, .var_level) {
   
   by_neigh <-
     neigh_wide |>
     as_tibble() |>
-    filter(rpt_group == .rpt_group, rpt_level == .rpt_level) |>
+    filter(var_group == .var_group, var_level == .var_level) |>
     arrange(SPA) |>
     janitor::adorn_totals() |>
     mutate(
@@ -1240,8 +1221,8 @@ neigh_gt <- function(.rpt_group, .rpt_level) {
   by_subdiv <- 
     subdiv_wide |> 
     as_tibble() |>
-    filter(rpt_group == .rpt_group, rpt_level == .rpt_level) |>
-    mutate(SPA = if_else(SPA == "Cleveland", SPA, "Other")) |>
+    filter(var_group == .var_group, var_level == .var_level) |>
+    mutate(SPA = if_else(geo_name == "Cleveland", geo_name, "Other")) |>
     summarize(.by = SPA, across(starts_with("pop"), sum)) |>
     arrange(SPA) |>
     janitor::adorn_totals() |>
@@ -1294,7 +1275,7 @@ neigh_gt <- function(.rpt_group, .rpt_level) {
     ) |>
     gt::sub_missing(missing_text = "") |>
     gt::tab_header(
-      glue("Changing {.rpt_level} Population in Cleveland, 2000-2023"),
+      glue("Changing {.var_level} Population in Cleveland, 2000-2023"),
       "Decennial and ACS censuses"
     ) |>
     gt::tab_options(
@@ -1314,31 +1295,31 @@ While Cleveland's white and black populations have fallen, Asian, Hispanic, and 
 #| echo: false
 
 subdiv_long |>
-  filter(rpt_group %in% c("Race/ethnicity")) |>
-  mutate(SPA = if_else(SPANM == "Cleveland", SPANM, "Other Parts of Cuyahoga County")) |>
-  summarize(.by = c(yr, SPA, rpt_level), value = sum(value)) |>
-  mutate(.by = c(yr, SPA), pct = value / sum(value)) |>
+  filter(var_group %in% c("Race/ethnicity")) |>
+  mutate(geo_name = if_else(geo_name == "Cleveland", geo_name, "Other Parts of Cuyahoga County")) |>
+  summarize(.by = c(yr, geo_name, var_level), value = sum(value)) |>
+  mutate(.by = c(yr, geo_name), pct = value / sum(value)) |>
   pivot_wider(names_from = yr, values_from = c(value, pct)) |>
-  select(SPA, rpt_level, ends_with("2000"), ends_with("2010"), ends_with("2020"), 
+  select(geo_name, var_level, ends_with("2000"), ends_with("2010"), ends_with("2020"), 
          ends_with("2023")) |>
   mutate(across(starts_with("pct"), \(x) percent(x, 1))) |>
   janitor::adorn_totals(where = "row", fill = "", na.rm = TRUE, name = "County Total",
                         starts_with("value")) |>
   mutate(
-    rpt_level = factor(rpt_level, levels = levels(subdiv_long$rpt_level)),
-    SPA = factor(SPA, levels = c("Cleveland", "Other Parts of Cuyahoga County", "County Total"))
+    var_level = factor(var_level, levels = levels(subdiv_long$var_level)),
+    geo_name = factor(geo_name, levels = c("Cleveland", "Other Parts of Cuyahoga County", "County Total"))
   ) |>
-  arrange(SPA, rpt_level) |>
-  group_by(SPA) |>
+  arrange(geo_name, var_level) |>
+  group_by(geo_name) |>
   gt::gt() |>
   gt::fmt_number(starts_with("value"), decimals = 0) |>
   gt::sub_missing(missing_text = "Total") |>
   gt::cols_label(
-    rpt_level = "",
+    var_level = "",
     value_2000 = "2000", value_2010 = "2010", value_2020 = "2020", value_2023 = "2023",
     pct_2000 = "", pct_2010 = "", pct_2020 = "", pct_2023 = ""
   ) |>
-  gt::cols_align("left", rpt_level) |>
+  gt::cols_align("left", var_level) |>
   gt::tab_style(cell_borders("right", "gray80"), cells_body(columns = c(2, 4, 6, 8))) |>
   gt::tab_style(gt::cell_fill("honeydew2"), cells_group()) |>
   gt::tab_header("Cuyahoga Race/ethnicity Population Change") |>
@@ -1353,13 +1334,13 @@ The SPAs with historically high concentrations of black populations like *Glenvi
 
 x <-
   neigh_long |>
-  filter(rpt_group %in% c("Race/ethnicity", "Total")) |>
+  filter(var_group %in% c("Race/ethnicity", "Total")) |>
   mutate(.by = c(yr, SPA), pct = value / sum(value) * 2)
-# neigh_long |> filter(rpt_group == "Total", yr == "2000", SPA == "Collinwood Nottingham")
+# neigh_long |> filter(var_group == "Total", yr == "2000", SPA == "Collinwood Nottingham")
 x_tooltip <- 
   x |>
-  select(-rpt_group) |>
-  pivot_wider(names_from = rpt_level, values_from = c(value, pct)) |>
+  select(-var_group) |>
+  pivot_wider(names_from = var_level, values_from = c(value, pct)) |>
   mutate(tt = glue(
     "{SPA} | {yr}\n\n",
     "{percent(pct_Black, 1)} Black ({comma(value_Black)})\n",
@@ -1374,9 +1355,9 @@ x_tooltip <-
 p <-
   x |> 
   inner_join(x_tooltip, by = c("yr", "SPA")) |>
-  filter(rpt_level != "Total") |>
+  filter(var_level != "Total") |>
   ggplot(aes(x = as.factor(yr), y = value)) +
-  geom_col_interactive(aes(fill = rpt_level, tooltip = tt)) + 
+  geom_col_interactive(aes(fill = var_level, tooltip = tt)) + 
   facet_wrap(vars(SPA)) +
   labs(y = NULL, fill = NULL, title = "Cleveland Population by Race/ethnicity") +
   scale_y_continuous(labels = number_format(scale_cut = cut_short_scale())) +
@@ -1393,31 +1374,31 @@ Unfortunately, there 2020 and 2023 ACS censuses do not provide block level data 
 #| echo: false
 
 subdiv_long |>
-  filter(rpt_group %in% c("Age")) |>
-  mutate(SPA = if_else(SPANM == "Cleveland", SPANM, "Other Parts of Cuyahoga County")) |>
-  summarize(.by = c(yr, SPA, rpt_level), value = sum(value)) |>
-  mutate(.by = c(yr, SPA), pct = value / sum(value)) |>
+  filter(var_group %in% c("Age")) |>
+  mutate(geo_name = if_else(geo_name == "Cleveland", geo_name, "Other Parts of Cuyahoga County")) |>
+  summarize(.by = c(yr, geo_name, var_level), value = sum(value)) |>
+  mutate(.by = c(yr, geo_name), pct = value / sum(value)) |>
   pivot_wider(names_from = yr, values_from = c(value, pct)) |>
-  select(SPA, rpt_level, ends_with("2000"), ends_with("2010"), ends_with("2020"), 
+  select(geo_name, var_level, ends_with("2000"), ends_with("2010"), ends_with("2020"), 
          ends_with("2023")) |>
   mutate(across(starts_with("pct"), \(x) percent(x, 1))) |>
   janitor::adorn_totals(where = "row", fill = "", na.rm = TRUE, name = "County Total",
                         starts_with("value")) |>
   mutate(
-    rpt_level = factor(rpt_level, levels = levels(subdiv_long$rpt_level)),
-    SPA = factor(SPA, levels = c("Cleveland", "Other Parts of Cuyahoga County", "County Total"))
+    var_level = factor(var_level, levels = levels(subdiv_long$var_level)),
+    geo_name = factor(geo_name, levels = c("Cleveland", "Other Parts of Cuyahoga County", "County Total"))
   ) |>
-  arrange(SPA, rpt_level) |>
-  group_by(SPA) |>
+  arrange(geo_name, var_level) |>
+  group_by(geo_name) |>
   gt::gt() |>
   gt::fmt_number(starts_with("value"), decimals = 0) |>
   gt::sub_missing(missing_text = "Total") |>
   gt::cols_label(
-    rpt_level = "",
+    var_level = "",
     value_2000 = "2000", value_2010 = "2010", value_2020 = "2020", value_2023 = "2023",
     pct_2000 = "", pct_2010 = "", pct_2020 = "", pct_2023 = ""
   ) |>
-  gt::cols_align("left", rpt_level) |>
+  gt::cols_align("left", var_level) |>
   gt::tab_style(cell_borders("right", "gray80"), cells_body(columns = c(2, 4, 6, 8))) |>
   gt::tab_style(gt::cell_fill("honeydew2"), cells_group()) |>
   gt::tab_header("Cuyahoga Age Population Change") |>
